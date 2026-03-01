@@ -1,0 +1,104 @@
+syntax = "proto3";
+package proto.storage.v1;
+
+// path for generated go-package
+option go_package = "github.com/satyam709/gen/pb_storage";
+
+/*
+   PutChunkRequest - represents the structure of individual frame of a chunk stream
+*/
+message PutChunkRequest {
+  string chunk_id = 1;
+  // 32kb frame of 4mb chunk
+  bytes data = 2;
+  // Checksum of this frame (SHA256)
+  string checksum = 3;
+  // signals the end of the stream
+  bool is_last = 4;
+}
+
+/*
+   PutChunkResponse - represents the response for a chunk upload frame
+*/
+message PutChunkResponse {
+  // General response
+  optional Response response = 1;
+
+  // Rest of the data
+  string chunk_id = 2;
+  // 32kb frame of 4mb chunk
+  string checksum = 3;
+}
+
+/*
+   Response - general embedded fields present in all server responses
+*/
+message Response {
+  int32 code = 1;
+  string msg = 2;
+  optional string error = 3;
+}
+
+/*
+   GetChunkRequest - request structure for fetching a chunk by id
+*/
+message GetChunkRequest {
+  string chunk_id = 1;
+}
+
+/*
+   GetChunkResponse - response structure for a chunk frame sent to client
+*/
+message GetChunkResponse {
+  // General response
+  optional Response response = 1;
+  // chunk uid
+  string chunk_id = 2;
+  // 32kb frame of 4mb chunk
+  bytes data = 3;
+  // Checksum of this frame (SHA256)
+  string checksum = 4;
+  // signals the end of the stream
+  bool is_last = 5;
+}
+
+/*
+   DeleteChunkRequest - request structure for deleting a chunk by id
+*/
+message DeleteChunkRequest {
+  string chunk_id = 1;
+}
+
+/*
+   DeleteChunkResponse - response structure for chunk deletion
+*/
+message DeleteChunkResponse {
+  optional Response response = 1;
+  bool success = 2;
+}
+
+/*
+   VerifyChunkRequest - request structure for verifying chunk integrity
+*/
+message VerifyChunkRequest {
+  string chunk_id = 1;
+  string checksum = 4;
+}
+
+/*
+   VerifyChunkResponse - response structure for chunk verification result
+*/
+message VerifyChunkResponse {
+  optional Response response = 1;
+  bool is_valid = 2;
+}
+
+// StorageService (clients → storage nodes)
+service StorageService {
+  // stream client -> node
+  rpc PutChunk(stream PutChunkRequest) returns (PutChunkResponse);
+  // streams the requested chunk to the client
+  rpc GetChunk(GetChunkRequest) returns (stream GetChunkResponse);
+  rpc DeleteChunk(DeleteChunkRequest) returns (stream DeleteChunkResponse);
+  rpc VerifyChunk(VerifyChunkRequest) returns (VerifyChunkResponse);
+}
