@@ -93,7 +93,7 @@ func (x *PutChunkRequest) GetIsLast() bool {
 	return false
 }
 
-// PutChunkRequest - represents the structure of individual frame of a chunk stream
+// PutChunkResponse - represents the response for a chunk upload frame
 type PutChunkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// General response
@@ -157,7 +157,7 @@ func (x *PutChunkResponse) GetChecksum() string {
 	return ""
 }
 
-// Response represents the general embedded fields that will be present all server responses
+// Response - general embedded fields present in all server responses
 type Response struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          int32                  `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -218,6 +218,7 @@ func (x *Response) GetError() string {
 	return ""
 }
 
+// GetChunkRequest - request structure for fetching a chunk by id
 type GetChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -262,6 +263,7 @@ func (x *GetChunkRequest) GetChunkId() string {
 	return ""
 }
 
+// GetChunkResponse - response structure for a chunk frame sent to client
 type GetChunkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// General response
@@ -343,8 +345,10 @@ func (x *GetChunkResponse) GetIsLast() bool {
 	return false
 }
 
+// DeleteChunkRequest - request structure for deleting a chunk by id
 type DeleteChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -379,8 +383,18 @@ func (*DeleteChunkRequest) Descriptor() ([]byte, []int) {
 	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{5}
 }
 
+func (x *DeleteChunkRequest) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+// DeleteChunkResponse - response structure for chunk deletion
 type DeleteChunkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Response      *Response              `protobuf:"bytes,1,opt,name=response,proto3,oneof" json:"response,omitempty"`
+	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -415,8 +429,25 @@ func (*DeleteChunkResponse) Descriptor() ([]byte, []int) {
 	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{6}
 }
 
+func (x *DeleteChunkResponse) GetResponse() *Response {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *DeleteChunkResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+// VerifyChunkRequest - request structure for verifying chunk integrity
 type VerifyChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	Checksum      string                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -451,8 +482,25 @@ func (*VerifyChunkRequest) Descriptor() ([]byte, []int) {
 	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{7}
 }
 
+func (x *VerifyChunkRequest) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+func (x *VerifyChunkRequest) GetChecksum() string {
+	if x != nil {
+		return x.Checksum
+	}
+	return ""
+}
+
+// VerifyChunkResponse - response structure for chunk verification result
 type VerifyChunkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Response      *Response              `protobuf:"bytes,1,opt,name=response,proto3,oneof" json:"response,omitempty"`
+	IsValid       bool                   `protobuf:"varint,2,opt,name=is_valid,json=isValid,proto3" json:"is_valid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -487,6 +535,20 @@ func (*VerifyChunkResponse) Descriptor() ([]byte, []int) {
 	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{8}
 }
 
+func (x *VerifyChunkResponse) GetResponse() *Response {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *VerifyChunkResponse) GetIsValid() bool {
+	if x != nil {
+		return x.IsValid
+	}
+	return false
+}
+
 var File_proto_storage_v1_storage_proto protoreflect.FileDescriptor
 
 const file_proto_storage_v1_storage_proto_rawDesc = "" +
@@ -515,11 +577,20 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12\x1a\n" +
 	"\bchecksum\x18\x04 \x01(\tR\bchecksum\x12\x17\n" +
 	"\ais_last\x18\x05 \x01(\bR\x06isLastB\v\n" +
-	"\t_response\"\x14\n" +
-	"\x12DeleteChunkRequest\"\x15\n" +
-	"\x13DeleteChunkResponse\"\x14\n" +
-	"\x12VerifyChunkRequest\"\x15\n" +
-	"\x13VerifyChunkResponse2\xf4\x02\n" +
+	"\t_response\"/\n" +
+	"\x12DeleteChunkRequest\x12\x19\n" +
+	"\bchunk_id\x18\x01 \x01(\tR\achunkId\"y\n" +
+	"\x13DeleteChunkResponse\x12;\n" +
+	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccessB\v\n" +
+	"\t_response\"K\n" +
+	"\x12VerifyChunkRequest\x12\x19\n" +
+	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x1a\n" +
+	"\bchecksum\x18\x04 \x01(\tR\bchecksum\"z\n" +
+	"\x13VerifyChunkResponse\x12;\n" +
+	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
+	"\bis_valid\x18\x02 \x01(\bR\aisValidB\v\n" +
+	"\t_response2\xf4\x02\n" +
 	"\x0eStorageService\x12S\n" +
 	"\bPutChunk\x12!.proto.storage.v1.PutChunkRequest\x1a\".proto.storage.v1.PutChunkResponse(\x01\x12S\n" +
 	"\bGetChunk\x12!.proto.storage.v1.GetChunkRequest\x1a\".proto.storage.v1.GetChunkResponse0\x01\x12\\\n" +
@@ -553,19 +624,21 @@ var file_proto_storage_v1_storage_proto_goTypes = []any{
 var file_proto_storage_v1_storage_proto_depIdxs = []int32{
 	2, // 0: proto.storage.v1.PutChunkResponse.response:type_name -> proto.storage.v1.Response
 	2, // 1: proto.storage.v1.GetChunkResponse.response:type_name -> proto.storage.v1.Response
-	0, // 2: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
-	3, // 3: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
-	5, // 4: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
-	7, // 5: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
-	1, // 6: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
-	4, // 7: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
-	6, // 8: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
-	8, // 9: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
-	6, // [6:10] is the sub-list for method output_type
-	2, // [2:6] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2, // 2: proto.storage.v1.DeleteChunkResponse.response:type_name -> proto.storage.v1.Response
+	2, // 3: proto.storage.v1.VerifyChunkResponse.response:type_name -> proto.storage.v1.Response
+	0, // 4: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
+	3, // 5: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
+	5, // 6: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
+	7, // 7: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
+	1, // 8: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
+	4, // 9: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
+	6, // 10: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
+	8, // 11: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
+	8, // [8:12] is the sub-list for method output_type
+	4, // [4:8] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_storage_v1_storage_proto_init() }
@@ -576,6 +649,8 @@ func file_proto_storage_v1_storage_proto_init() {
 	file_proto_storage_v1_storage_proto_msgTypes[1].OneofWrappers = []any{}
 	file_proto_storage_v1_storage_proto_msgTypes[2].OneofWrappers = []any{}
 	file_proto_storage_v1_storage_proto_msgTypes[4].OneofWrappers = []any{}
+	file_proto_storage_v1_storage_proto_msgTypes[6].OneofWrappers = []any{}
+	file_proto_storage_v1_storage_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

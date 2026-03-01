@@ -1,5 +1,6 @@
-.PHONY: lint go-fmt pb-fmt fmt lint go-lint pb-lint check-tools
-proto-gen:       # regenerate all pb.go files from protos
+.PHONY: lint go-fmt pb-fmt fmt lint go-lint pb-lint check-tools proto-gen
+proto-gen: check-tools     # regenerate all pb.go files from protos
+	buf generate
 build-storage:   # build storage node binary
 	go build -o bin/storage ./storage/cmd
 build-metadata:  # build metadata node binary  
