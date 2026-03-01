@@ -1,3 +1,4 @@
+.PHONY: lint go-fmt pb-fmt fmt lint go-lint pb-lint check-tools
 proto-gen:       # regenerate all pb.go files from protos
 build-storage:   # build storage node binary
 	go build -o bin/storage ./storage/cmd
@@ -10,11 +11,31 @@ test-all:        # all tests
 run-cluster:     # start 1 metadata + 4 storage nodes locally
 demo:            # run demo script
 
-check-golangci-lint:
-	@which golangci-lint > /dev/null 2>&1 || (echo "Error: golangci-lint is not installed. Please install it by running: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
+# func to check for a specific tool
+define check_tool
+	@which $(1) > /dev/null 2>&1 || ( \
+		echo "Error: $(1) is not installed."; \
+		exit 1)
+endef
 
-lint: check-golangci-lint
-	golangci-lint run
+# checks if required tools are installed
+check-tools:
+	$(call check_tool,golangci-lint)
+	$(call check_tool,buf)
+ 
+lint: check-tools go-lint pb-lint
 
-fmt:
+go-lint:
+	golangci-lint run ./...
+
+pb-lint:
+	buf format --diff --exit-code
+	buf lint
+
+go-fmt:
 	go fmt ./...
+
+pb-fmt:
+	buf format -w
+
+fmt: go-fmt pb-fmt
