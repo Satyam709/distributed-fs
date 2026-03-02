@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -84,6 +85,8 @@ func NewChecksumIndexBoltDB[T any](opts ...BoltChecksumIndexOpts[T]) *BoltChecks
 		bucket: "checksums",
 	}
 
+	WithDefaultPath[T]()(boltStore)
+
 	boltStore.logger.Logger = *boltStore.logger.Logger.With(slog.String("component", "BoltChecksumIndex"))
 
 	for _, opt := range opts {
@@ -100,7 +103,13 @@ func (c *BoltChecksumIndex[T]) Open() error {
 	}
 
 	dbFile, err := filepath.Abs(filepath.Join(c.path, "checksum.db"))
+
 	if err != nil {
+		return err
+	}
+
+	// ensure the path exist
+	if err = os.MkdirAll(filepath.Dir(dbFile), 0700); err != nil {
 		return err
 	}
 
