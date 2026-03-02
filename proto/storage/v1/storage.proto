@@ -9,12 +9,14 @@ option go_package = "github.com/satyam709/gen/pb_storage";
 */
 message PutChunkRequest {
   string chunk_id = 1;
+  string file_id = 2;
+  repeated NodeInfo replicate_to = 3;
   // 32kb frame of 4mb chunk
-  bytes data = 2;
+  bytes data = 4;
   // Checksum of this frame (SHA256)
-  string checksum = 3;
+  string checksum = 5;
   // signals the end of the stream
-  bool is_last = 4;
+  bool is_last = 6;
 }
 
 /*
@@ -92,6 +94,8 @@ message VerifyChunkResponse {
   optional Response response = 1;
   bool is_valid = 2;
 }
+
+message NodeInfo {}
 
 // StorageService (clients → storage nodes)
 service StorageService {

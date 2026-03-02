@@ -23,14 +23,16 @@ const (
 
 // PutChunkRequest - represents the structure of individual frame of a chunk stream
 type PutChunkRequest struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	ChunkId string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ChunkId     string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	FileId      string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	ReplicateTo []*NodeInfo            `protobuf:"bytes,3,rep,name=replicate_to,json=replicateTo,proto3" json:"replicate_to,omitempty"`
 	// 32kb frame of 4mb chunk
-	Data []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Data []byte `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	// Checksum of this frame (SHA256)
-	Checksum string `protobuf:"bytes,3,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum string `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	// signals the end of the stream
-	IsLast        bool `protobuf:"varint,4,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
+	IsLast        bool `protobuf:"varint,6,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -70,6 +72,20 @@ func (x *PutChunkRequest) GetChunkId() string {
 		return x.ChunkId
 	}
 	return ""
+}
+
+func (x *PutChunkRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *PutChunkRequest) GetReplicateTo() []*NodeInfo {
+	if x != nil {
+		return x.ReplicateTo
+	}
+	return nil
 }
 
 func (x *PutChunkRequest) GetData() []byte {
@@ -549,16 +565,54 @@ func (x *VerifyChunkResponse) GetIsValid() bool {
 	return false
 }
 
+type NodeInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeInfo) Reset() {
+	*x = NodeInfo{}
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeInfo) ProtoMessage() {}
+
+func (x *NodeInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
+func (*NodeInfo) Descriptor() ([]byte, []int) {
+	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{9}
+}
+
 var File_proto_storage_v1_storage_proto protoreflect.FileDescriptor
 
 const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\n" +
-	"\x1eproto/storage/v1/storage.proto\x12\x10proto.storage.v1\"u\n" +
+	"\x1eproto/storage/v1/storage.proto\x12\x10proto.storage.v1\"\xcd\x01\n" +
 	"\x0fPutChunkRequest\x12\x19\n" +
-	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\x12\x1a\n" +
-	"\bchecksum\x18\x03 \x01(\tR\bchecksum\x12\x17\n" +
-	"\ais_last\x18\x04 \x01(\bR\x06isLast\"\x93\x01\n" +
+	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x17\n" +
+	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12=\n" +
+	"\freplicate_to\x18\x03 \x03(\v2\x1a.proto.storage.v1.NodeInfoR\vreplicateTo\x12\x12\n" +
+	"\x04data\x18\x04 \x01(\fR\x04data\x12\x1a\n" +
+	"\bchecksum\x18\x05 \x01(\tR\bchecksum\x12\x17\n" +
+	"\ais_last\x18\x06 \x01(\bR\x06isLast\"\x93\x01\n" +
 	"\x10PutChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12\x1a\n" +
@@ -590,7 +644,9 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\x13VerifyChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bis_valid\x18\x02 \x01(\bR\aisValidB\v\n" +
-	"\t_response2\xf4\x02\n" +
+	"\t_response\"\n" +
+	"\n" +
+	"\bNodeInfo2\xf4\x02\n" +
 	"\x0eStorageService\x12S\n" +
 	"\bPutChunk\x12!.proto.storage.v1.PutChunkRequest\x1a\".proto.storage.v1.PutChunkResponse(\x01\x12S\n" +
 	"\bGetChunk\x12!.proto.storage.v1.GetChunkRequest\x1a\".proto.storage.v1.GetChunkResponse0\x01\x12\\\n" +
@@ -609,7 +665,7 @@ func file_proto_storage_v1_storage_proto_rawDescGZIP() []byte {
 	return file_proto_storage_v1_storage_proto_rawDescData
 }
 
-var file_proto_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_proto_storage_v1_storage_proto_goTypes = []any{
 	(*PutChunkRequest)(nil),     // 0: proto.storage.v1.PutChunkRequest
 	(*PutChunkResponse)(nil),    // 1: proto.storage.v1.PutChunkResponse
@@ -620,25 +676,27 @@ var file_proto_storage_v1_storage_proto_goTypes = []any{
 	(*DeleteChunkResponse)(nil), // 6: proto.storage.v1.DeleteChunkResponse
 	(*VerifyChunkRequest)(nil),  // 7: proto.storage.v1.VerifyChunkRequest
 	(*VerifyChunkResponse)(nil), // 8: proto.storage.v1.VerifyChunkResponse
+	(*NodeInfo)(nil),            // 9: proto.storage.v1.NodeInfo
 }
 var file_proto_storage_v1_storage_proto_depIdxs = []int32{
-	2, // 0: proto.storage.v1.PutChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 1: proto.storage.v1.GetChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 2: proto.storage.v1.DeleteChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 3: proto.storage.v1.VerifyChunkResponse.response:type_name -> proto.storage.v1.Response
-	0, // 4: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
-	3, // 5: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
-	5, // 6: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
-	7, // 7: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
-	1, // 8: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
-	4, // 9: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
-	6, // 10: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
-	8, // 11: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
-	8, // [8:12] is the sub-list for method output_type
-	4, // [4:8] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	9, // 0: proto.storage.v1.PutChunkRequest.replicate_to:type_name -> proto.storage.v1.NodeInfo
+	2, // 1: proto.storage.v1.PutChunkResponse.response:type_name -> proto.storage.v1.Response
+	2, // 2: proto.storage.v1.GetChunkResponse.response:type_name -> proto.storage.v1.Response
+	2, // 3: proto.storage.v1.DeleteChunkResponse.response:type_name -> proto.storage.v1.Response
+	2, // 4: proto.storage.v1.VerifyChunkResponse.response:type_name -> proto.storage.v1.Response
+	0, // 5: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
+	3, // 6: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
+	5, // 7: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
+	7, // 8: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
+	1, // 9: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
+	4, // 10: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
+	6, // 11: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
+	8, // 12: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
+	9, // [9:13] is the sub-list for method output_type
+	5, // [5:9] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proto_storage_v1_storage_proto_init() }
@@ -657,7 +715,7 @@ func file_proto_storage_v1_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_storage_v1_storage_proto_rawDesc), len(file_proto_storage_v1_storage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
