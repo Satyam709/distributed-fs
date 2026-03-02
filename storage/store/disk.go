@@ -37,7 +37,7 @@ var (
 
 const (
 	DEFAULT_STORE_SIZE = 4 * (1 << 30) // 4Gib in bytes
-	DIR_SHARD_LEVEL = 2
+	DIR_SHARD_LEVEL    = 2
 )
 
 var (
@@ -185,7 +185,9 @@ func (ds *DiskStore) Verify(chunkId string) error {
 		return err
 	}
 	data, err := ds.Read(chunkId)
-
+	if err != nil {
+		return err
+	}
 	calculatedHash := sha256.Sum256(data)
 
 	if calculatedHash != val {
