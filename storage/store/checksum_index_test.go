@@ -463,3 +463,64 @@ func TestBoltChecksumIndex_IntGenericType(t *testing.T) {
 	require.NoError(t, err, "Get() failed")
 	assert.Equal(t, 42, got)
 }
+
+func TestGetAllKeys(t *testing.T) {
+	type testCase struct {
+		name           string
+		keys           []KeyValue[string]
+		expectedResult []string
+		expectedError  error
+	}
+
+	testCases := []testCase{
+		{
+			name: "valid test case with multiple keys",
+			keys: []KeyValue[string]{
+				{key: "first", value: "value1"},
+				{key: "sec", value: "value2"},
+				{key: "third", value: "value3"},
+			},
+			expectedResult: []string{"first", "sec", "third"},
+			expectedError:  nil,
+		},
+		{
+			name:           "empty store",
+			keys:           []KeyValue[string]{},
+			expectedResult: []string{},
+			expectedError:  nil,
+		},
+		{
+			name: "single key",
+			keys: []KeyValue[string]{
+				{key: "only", value: "value"},
+			},
+			expectedResult: []string{"only"},
+			expectedError:  nil,
+		},
+		{
+			name:           "empty bucket",
+			keys:           []KeyValue[string]{},
+			expectedResult: []string{},
+			expectedError:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newOpenedStore(t)
+
+			// Populate store with test data
+			assert.NoError(t, store.PutAll(tc.keys), "PutAll failed")
+
+			// Call GetAllKeys (assuming this method exists)
+			got, err := store.GetAll()
+
+			if tc.expectedError != nil {
+				assert.ErrorIs(t, err, tc.expectedError)
+			} else {
+				assert.NoError(t, err, "GetAllKeys() failed")
+				assert.ElementsMatch(t, tc.expectedResult, got, "keys mismatch")
+			}
+		})
+	}
+}

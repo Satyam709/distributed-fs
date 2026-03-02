@@ -40,6 +40,17 @@ func (StringCodec) Unmarshal(b []byte) (string, error) {
 	return string(b), nil
 }
 
+// []ByteCodec is a Codec[[]byte] its a stub as by-default bblot stores vals in []byte
+type ByteCodec struct{}
+
+func (ByteCodec) Marshal(v []byte) ([]byte, error) {
+	return v, nil
+}
+
+func (ByteCodec) Unmarshal(b []byte) ([]byte, error) {
+	return b, nil
+}
+
 // BoltChecksumIndex is a generic key→value store backed by bbolt.
 type BoltChecksumIndex[T any] struct {
 	db     *bbolt.DB
@@ -180,6 +191,48 @@ func (c *BoltChecksumIndex[T]) Get(key string) (T, error) {
 	})
 
 	return result, err
+}
+
+func (c *BoltChecksumIndex[T]) GetAll() ([]string, error) {
+	var zero []string
+
+	if c.db == nil {
+		return zero, ErrDatabaseNotOpened
+	}
+
+	result := make([]string, 0)
+
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(c.bucket))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+
+		err := bucket.ForEach(func(k, v []byte) error {
+			result = append(result, string(k))
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return result, err
+}
+
+func (c *BoltChecksumIndex[T]) PutAll(data []KeyValue[T]) error {
+	if c.db == nil {
+		return ErrDatabaseNotOpened
+	}
+
+	for _, val := range data {
+		err := c.Put(val.key, val.value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CleanUp closes the underlying bbolt database. It is safe to call multiple
