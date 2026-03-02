@@ -3,6 +3,7 @@ module github.com/satyam709/distributed-fs
 go 1.25.6
 
 require (
+	go.etcd.io/bbolt v1.4.3
 	google.golang.org/grpc v1.79.1
 	google.golang.org/protobuf v1.36.11
 )
