@@ -1,0 +1,94 @@
+package storage
+
+import (
+	"testing"
+	"time"
+
+	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/storage/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+
+func makeNode(t *testing.T, port string) *StorageNode {
+	t.Helper()
+
+	dir := t.TempDir()
+	cs := store.NewChecksumIndexBoltDB[[32]byte](
+		store.WithDbPath[[32]byte](dir),
+		store.WithCodec[[32]byte](sha256ArrayCodec{}),
+	)
+	require.NoError(t, cs.Open())
+	t.Cleanup(cs.CleanUp)
+
+	ds, err := store.NewDiskStore(
+		store.WithRootDir(dir),
+		store.WithTempDir(dir),
+		store.WithSplitLevel(2),
+		store.WithTotalSpace(64*1024*1024),
+		store.WithChecksumStore(cs),
+	)
+	require.NoError(t, err)
+
+	return NewStorageNode(
+		StorageNodeConfig{Port: port, Timeout: 5 * time.Second},
+		logging.NewCLogger(),
+		ds,
+	)
+}
+
+// sha256ArrayCodec mirrors the codec used in other test files.
+type sha256ArrayCodec struct{}
+
+func (sha256ArrayCodec) Marshal(v [32]byte) ([]byte, error) {
+	b := make([]byte, 32)
+	copy(b, v[:])
+	return b, nil
+}
+func (sha256ArrayCodec) Unmarshal(b []byte) ([32]byte, error) {
+	var arr [32]byte
+	copy(arr[:], b)
+	return arr, nil
+}
+
+// ---------------------------------------------------------------------------
+// StorageNode tests
+// ---------------------------------------------------------------------------
+
+// TestStorageNode_StartAndStop verifies that the node binds a listener,
+// serves gRPC traffic (just that Start doesn't error), and shuts down cleanly.
+func TestStorageNode_StartAndStop(t *testing.T) {
+	node := makeNode(t, ":0") // OS picks an available port
+	require.NoError(t, node.Start())
+	node.Stop() // must not hang or panic
+}
+
+// TestStorageNode_Stop_BeforeStart checks that calling Stop on a node that
+// was never started is a safe no-op.
+func TestStorageNode_Stop_BeforeStart(t *testing.T) {
+	node := makeNode(t, ":0")
+	assert.NotPanics(t, node.Stop, "Stop before Start must be a no-op")
+}
+
+// TestStorageNode_Start_InvalidPort ensures Start returns a non-nil error
+// when the bind address is invalid/unusable.
+func TestStorageNode_Start_InvalidPort(t *testing.T) {
+	node := makeNode(t, "invalid-address-!!!")
+	err := node.Start()
+	assert.Error(t, err, "Start with bad address should return an error")
+}
+
+// TestStorageNode_Stop_Idempotent confirms multiple Stop calls after Start
+// don't panic or deadlock.
+func TestStorageNode_Stop_Idempotent(t *testing.T) {
+	node := makeNode(t, ":0")
+	require.NoError(t, node.Start())
+	assert.NotPanics(t, node.Stop)
+	// Second Stop: grpcServer is stopped already; the nil-guard in Stop
+	// prevents a second GracefulStop call — should be safe.
+	assert.NotPanics(t, node.Stop)
+}

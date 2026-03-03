@@ -115,16 +115,15 @@ func (cw *ChunkWriter) Finalize(expectedChecksum string) (err error) {
 	cw.isDone = true
 
 	// Atomic rename into final location.
-	finalPath, err := cw.store.PathForChunk(cw.chunkId)
-	if err != nil {
-		return
-	}
-	err = cw.store.Rename(cw.filepath, finalPath)
+	// store.Rename(source, chunkId) — it derives the shard path itself via
+	// PathForChunk. Do NOT pass the pre-computed shard path here or the file
+	// will end up double-sharded at an unresolvable path.
+	err = cw.store.Rename(cw.filepath, cw.chunkId)
 	if err != nil {
 		return
 	}
 
-	cw.logger.Info("Finalize: chunk committed", slog.String("finalPath", finalPath))
+	cw.logger.Info("Finalize: chunk committed", slog.String("chunkId", cw.chunkId))
 	return nil
 }
 

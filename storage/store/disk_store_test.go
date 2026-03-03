@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -686,4 +687,128 @@ func TestChecksumIndex_Delete_KeyGoneFromGetAll(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, keys, "a")
 	assert.Contains(t, keys, "b")
+}
+
+// ---------------------------------------------------------------------------
+// Helper — tempDir same filesystem as rootDir (required for os.Rename)
+// ---------------------------------------------------------------------------
+
+// newTestDiskStoreWithTemp is like newTestDiskStore but sets tempDir == rootDir
+// so that os.Rename works without cross-device link errors.
+func newTestDiskStoreWithTemp(t *testing.T, totalSpace uint64) *DiskStore {
+	t.Helper()
+	dir := t.TempDir()
+	cs := NewChecksumIndexBoltDB[[32]byte](
+		WithDbPath[[32]byte](dir),
+		WithCodec[[32]byte](sha256ArrayCodec{}),
+	)
+	require.NoError(t, cs.Open(), "checksum store Open() failed")
+	t.Cleanup(cs.CleanUp)
+	ds, err := NewDiskStore(
+		WithRootDir(dir),
+		WithTempDir(dir),
+		WithSplitLevel(2),
+		WithTotalSpace(totalSpace),
+		WithChecksumStore(cs),
+	)
+	require.NoError(t, err)
+	return ds
+}
+
+// ---------------------------------------------------------------------------
+// TempDir
+// ---------------------------------------------------------------------------
+
+// TestTempDir_PathFormat verifies TempDir returns a path inside ds.tempDir
+// that includes the chunkId.
+func TestTempDir_PathFormat(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	path := ds.TempDir(minChunkId)
+	assert.True(t, strings.HasPrefix(filepath.Clean(path), filepath.Clean(ds.tempDir)),
+		"TempDir path %q should be under ds.tempDir %q", path, ds.tempDir)
+	assert.Contains(t, path, minChunkId)
+}
+
+// TestTempDir_DifferentChunksGetDifferentPaths ensures two distinct chunkIds
+// produce distinct temp paths (concurrent writes must not collide).
+func TestTempDir_DifferentChunksGetDifferentPaths(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	p1 := ds.TempDir("aabbccddeeff")
+	p2 := ds.TempDir("bbccddeeff00")
+	assert.NotEqual(t, p1, p2)
+}
+
+// ---------------------------------------------------------------------------
+// PathForChunk
+// ---------------------------------------------------------------------------
+
+// TestPathForChunk_CorrectShardPath checks the shard path for splitLevel=2.
+func TestPathForChunk_CorrectShardPath(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	got, err := ds.PathForChunk("abcdefgh1234")
+	require.NoError(t, err)
+	assert.Equal(t, "ab/cd/abcdefgh1234.chunk", got)
+}
+
+func TestPathForChunk_EmptyChunkId_ReturnsError(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	_, err := ds.PathForChunk("")
+	assert.ErrorIs(t, err, InvalidChunkId)
+}
+
+func TestPathForChunk_TooShortChunkId_ReturnsError(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	_, err := ds.PathForChunk("ab") // needs ≥ 4 chars for splitLevel=2
+	assert.ErrorIs(t, err, InvalidChunkId)
+}
+
+// ---------------------------------------------------------------------------
+// Rename — additional scenarios
+// ---------------------------------------------------------------------------
+
+// TestRename_ChunkAvailableForRead ensures a Rename-committed chunk reads back
+// with the original bytes.
+func TestRename_ChunkAvailableForRead(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	data := makeChunk(64, 'r')
+	tmp, err := os.CreateTemp(ds.tempDir, "*.tmp")
+	require.NoError(t, err)
+	_, err = tmp.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+	require.NoError(t, ds.Rename(tmp.Name(), minChunkId))
+	got, err := ds.Read(minChunkId)
+	require.NoError(t, err)
+	assert.Equal(t, data, got)
+}
+
+// TestRename_SourceGoneAfterRename confirms the temp file is gone after a
+// successful rename (os.Rename moves, not copies).
+func TestRename_SourceGoneAfterRename(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	tmp, err := os.CreateTemp(ds.tempDir, "*.tmp")
+	require.NoError(t, err)
+	_, err = tmp.Write(makeChunk(32, 'x'))
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+	tmpName := tmp.Name()
+	require.NoError(t, ds.Rename(tmpName, minChunkId))
+	_, statErr := os.Stat(tmpName)
+	assert.True(t, os.IsNotExist(statErr), "source temp file should be gone after Rename")
+}
+
+// ---------------------------------------------------------------------------
+// usedSpace underflow guard
+// ---------------------------------------------------------------------------
+
+// TestDelete_UsedSpaceDoesNotUnderflow checks the clamp in Delete: if
+// usedSpace is already 0 when a file is deleted, it must stay 0, not wrap.
+func TestDelete_UsedSpaceDoesNotUnderflow(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+	require.NoError(t, ds.Write(minChunkId, makeChunk(128, 'u')))
+	ds.usedSpace = 0 // force underflow condition
+	require.NoError(t, ds.Delete(minChunkId))
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), size, "usedSpace must clamp to 0, not underflow")
 }
