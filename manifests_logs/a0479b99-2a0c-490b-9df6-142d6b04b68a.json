@@ -1,0 +1,12 @@
+{
+  "file_id": "a0479b99-2a0c-490b-9df6-142d6b04b68a",
+  "filename": "test_20mb.bin",
+  "total_size": 20971520,
+  "chunk_status": {
+    "3992256b6e5e0f9e4f929e9b9bae8e40cf928446f52b24a63399778cb17eb173": false,
+    "4220ed2acdfbc6814228bc1adb5d5471dfe1828d8e181b3953cee559a93099aa": false,
+    "9df746a8c668903661a92f6fb3d57f3695f8335b8e2a20af363ca89a9938b986": false,
+    "b27fc8729514d29c2fb227a2e707060f77ec8659db036c1a409f22dd638065c5": false,
+    "c9f30e55c8717c71f8212ac145c0971d4ac599917814052e9f493b780edb4d76": false
+  }
+}
