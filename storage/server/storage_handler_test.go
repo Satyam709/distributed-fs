@@ -24,20 +24,6 @@ const bufSize = 1 << 20 // 1 MiB
 // Test infrastructure
 // ---------------------------------------------------------------------------
 
-// sha256ArrayCodec is needed to wire up the BoltDB checksum index.
-type sha256ArrayCodec struct{}
-
-func (sha256ArrayCodec) Marshal(v [32]byte) ([]byte, error) {
-	b := make([]byte, 32)
-	copy(b, v[:])
-	return b, nil
-}
-func (sha256ArrayCodec) Unmarshal(b []byte) ([32]byte, error) {
-	var arr [32]byte
-	copy(arr[:], b)
-	return arr, nil
-}
-
 // newTestServer spins up an in-process gRPC server backed by a real DiskStore
 // in a temp directory. Returns a connected client and a teardown func.
 func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) {
@@ -45,9 +31,8 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 
 	dir := t.TempDir()
 
-	cs := store.NewChecksumIndexBoltDB[[32]byte](
+	cs := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
 		store.WithDbPath[[32]byte](dir),
-		store.WithCodec[[32]byte](sha256ArrayCodec{}),
 	)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
@@ -63,7 +48,9 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
-	pb_storage.RegisterStorageServiceServer(srv, NewStorageServer(ds, nil))
+	ss, err := NewStorageServer(ds, nil)
+	require.NoError(t, err)
+	pb_storage.RegisterStorageServiceServer(srv, ss)
 
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.GracefulStop)
@@ -250,10 +237,10 @@ func TestVerifyChunk_ReturnsUnimplemented(t *testing.T) {
 	assert.Equal(t, codes.Unimplemented, status.Code(err))
 }
 
-// TestNewStorageServer_NilLogger ensures the constructor does not panic when
-// passed a nil logger — it should fall back to a default.
-func TestNewStorageServer_NilLogger(t *testing.T) {
-	assert.NotPanics(t, func() {
-		_ = NewStorageServer(nil, nil)
-	})
+// TestNewStorageServer_NilStore verifies the constructor returns an error when
+// store is nil, so callers never get a server that will panic on the first RPC.
+func TestNewStorageServer_NilStore(t *testing.T) {
+	_, err := NewStorageServer(nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Store must not be nil")
 }

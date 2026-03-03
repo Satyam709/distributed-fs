@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 
@@ -23,13 +24,17 @@ type StorageServer struct {
 }
 
 // NewStorageServer creates a StorageServer with a component-scoped logger.
-func NewStorageServer(s store.Store, logger *logging.CLogger) *StorageServer {
+// Returns an error if s is nil.
+func NewStorageServer(s store.Store, logger *logging.CLogger) (*StorageServer, error) {
+	if s == nil {
+		return nil, errors.New("StorageServer: Store must not be nil")
+	}
 	l := logging.NewCLogger()
 	if logger != nil {
 		l = logger
 	}
 	l.Logger = *l.Logger.With(slog.String("component", "StorageServer"))
-	return &StorageServer{Store: s, logger: l}
+	return &StorageServer{Store: s, logger: l}, nil
 }
 
 // PutChunk receives a client-streaming RPC that delivers chunk frames and

@@ -20,9 +20,8 @@ func newTestDiskStore(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs := NewChecksumIndexBoltDB[[32]byte](
+	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
 		WithDbPath[[32]byte](dir),
-		WithCodec[[32]byte](sha256ArrayCodec{}),
 	)
 	require.NoError(t, cs.Open(), "checksum store Open() failed")
 	t.Cleanup(cs.CleanUp)
@@ -34,21 +33,6 @@ func newTestDiskStore(t *testing.T, totalSpace uint64) *DiskStore {
 		WithChecksumStore(cs),
 	)
 	return ds
-}
-
-// sha256ArrayCodec marshals/unmarshals a [32]byte checksum.
-type sha256ArrayCodec struct{}
-
-func (sha256ArrayCodec) Marshal(v [32]byte) ([]byte, error) {
-	b := make([]byte, 32)
-	copy(b, v[:])
-	return b, nil
-}
-
-func (sha256ArrayCodec) Unmarshal(b []byte) ([32]byte, error) {
-	var arr [32]byte
-	copy(arr[:], b)
-	return arr, nil
 }
 
 // validChunkId returns a chunk id long enough for the default split level (2)
@@ -69,21 +53,38 @@ func makeChunk(size int, fill byte) []byte {
 // ---------------------------------------------------------------------------
 
 func TestNewDiskStore_Defaults(t *testing.T) {
-	ds, _ := NewDiskStore()
+	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	require.NoError(t, cs.Open())
+	t.Cleanup(cs.CleanUp)
+
+	ds, err := NewDiskStore(WithChecksumStore(cs))
+	require.NoError(t, err)
 	assert.Equal(t, ".", ds.rootDir, "default rootDir should be '.'")
 	assert.Equal(t, uint16(DIR_SHARD_LEVEL), ds.splitLevel, "default splitLevel")
 	assert.Equal(t, uint64(DEFAULT_STORE_SIZE), ds.totalSpace, "default totalSpace")
 }
 
 func TestNewDiskStore_WithOptions(t *testing.T) {
-	ds, _ := NewDiskStore(
+	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	require.NoError(t, cs.Open())
+	t.Cleanup(cs.CleanUp)
+
+	ds, err := NewDiskStore(
 		WithRootDir("/tmp/mystore"),
 		WithSplitLevel(3),
 		WithTotalSpace(1024),
+		WithChecksumStore(cs),
 	)
+	require.NoError(t, err)
 	assert.Equal(t, "/tmp/mystore", ds.rootDir)
 	assert.Equal(t, uint16(3), ds.splitLevel)
 	assert.Equal(t, uint64(1024), ds.totalSpace)
+}
+
+func TestNewDiskStore_NilChecksumStore_ReturnsError(t *testing.T) {
+	_, err := NewDiskStore() // no WithChecksumStore
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "checksumStore is required")
 }
 
 // ---------------------------------------------------------------------------
@@ -658,7 +659,7 @@ func TestChecksumIndex_Delete(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var s *BoltChecksumIndex[string]
 			if c.setup == nil {
-				s = NewChecksumIndexBoltDB[string](WithCodec(StringCodec{}))
+				s = NewChecksumIndexBoltDB[string](StringCodec{})
 			} else {
 				s = newOpenedStore(t)
 				c.setup(s)
@@ -698,9 +699,8 @@ func TestChecksumIndex_Delete_KeyGoneFromGetAll(t *testing.T) {
 func newTestDiskStoreWithTemp(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
-	cs := NewChecksumIndexBoltDB[[32]byte](
+	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
 		WithDbPath[[32]byte](dir),
-		WithCodec[[32]byte](sha256ArrayCodec{}),
 	)
 	require.NoError(t, cs.Open(), "checksum store Open() failed")
 	t.Cleanup(cs.CleanUp)

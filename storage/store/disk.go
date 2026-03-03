@@ -2,6 +2,7 @@ package store
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -136,6 +137,10 @@ func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
 	if err := os.MkdirAll(ds.tempDir, 0700); err != nil {
 		ds.logger.Error("failed to create tempDir", err, slog.String("path", ds.tempDir))
 		return nil, err
+	}
+
+	if ds.checksumStore == nil {
+		return nil, errors.New("DiskStore: checksumStore is required — use WithChecksumStore()")
 	}
 
 	ds.logger.Info("DiskStore ready")

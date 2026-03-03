@@ -31,7 +31,7 @@ func tempDir(t *testing.T) string {
 func newOpenedStore(t *testing.T) *BoltChecksumIndex[string] {
 	t.Helper()
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	require.NoError(t, store.Open(), "Open() failed")
 	t.Cleanup(store.CleanUp)
 	return store
@@ -66,36 +66,36 @@ func TestStringCodec_Marshal_EmptyBytes(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewChecksumIndexBoltDB_DefaultBucket(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string]()
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 	assert.Equal(t, "checksums", store.bucket, "unexpected default bucket name")
 }
 
 func TestWithDbPath_SetsPath(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string]("/tmp/testpath"))
+	store := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string]("/tmp/testpath"))
 	assert.Equal(t, "/tmp/testpath", store.path)
 }
 
 func TestWithDefaultPath_SetsConventionalPath(t *testing.T) {
 	want := filepath.Join(".", "storage", "store")
 
-	store := NewChecksumIndexBoltDB[string](
+	store := NewChecksumIndexBoltDB[string](StringCodec{},
 		WithDbPath[string]("/custom/path"),
 		WithDefaultPath[string](),
 	)
 	assert.Equal(t, want, store.path, "WithDefaultPath should override a custom path")
 
-	store2 := NewChecksumIndexBoltDB[string]()
+	store2 := NewChecksumIndexBoltDB[string](StringCodec{})
 	assert.Equal(t, want, store2.path, "default-constructed store should use conventional path")
 }
 
-func TestWithCodec_SetsCodec(t *testing.T) {
+func TestConstructor_SetsCodecFromPositionalArg(t *testing.T) {
 	c := StringCodec{}
-	store := NewChecksumIndexBoltDB[string](WithCodec(c))
-	assert.NotNil(t, store.codec, "expected codec to be set")
+	store := NewChecksumIndexBoltDB[string](c)
+	assert.NotNil(t, store.codec, "expected codec to be set via positional arg")
 }
 
 func TestNewChecksumIndexBoltDB_DatabaseNotOpenedByDefault(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string]()
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 	assert.Nil(t, store.db, "expected db to be nil before Open()")
 }
 
@@ -105,7 +105,7 @@ func TestNewChecksumIndexBoltDB_DatabaseNotOpenedByDefault(t *testing.T) {
 
 func TestOpen_CreatesDbFile(t *testing.T) {
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	defer store.CleanUp()
 
 	require.NoError(t, store.Open(), "Open() error")
@@ -122,9 +122,8 @@ func TestOpen_CreatesBucket(t *testing.T) {
 }
 
 func TestOpen_InvalidPath_ReturnsError(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string](
+	store := NewChecksumIndexBoltDB[string](StringCodec{},
 		WithDbPath[string]("/nonexistent/deeply/nested/path"),
-		WithCodec(StringCodec{}),
 	)
 	defer store.CleanUp()
 
@@ -133,13 +132,13 @@ func TestOpen_InvalidPath_ReturnsError(t *testing.T) {
 
 func TestOpen_AfterCleanUp_CanReopenSameDir(t *testing.T) {
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 
 	require.NoError(t, store.Open(), "first Open() failed")
 	store.CleanUp() // releases the file lock
 
 	// A fresh instance should be able to open the same DB file.
-	store2 := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	store2 := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	defer store2.CleanUp()
 	assert.NoError(t, store2.Open(), "reopen failed")
 }
@@ -184,14 +183,14 @@ func TestGet_KeyNotFound_ReturnsErrKeyNotFound(t *testing.T) {
 }
 
 func TestPut_BeforeOpen_ReturnsErrDatabaseNotOpened(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string](WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 
 	err := store.Put("k", "v")
 	assert.ErrorIs(t, err, ErrDatabaseNotOpened)
 }
 
 func TestGet_BeforeOpen_ReturnsErrDatabaseNotOpened(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string](WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 
 	_, err := store.Get("k")
 	assert.ErrorIs(t, err, ErrDatabaseNotOpened)
@@ -252,7 +251,7 @@ func TestPutAndGet_LargeValue(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCleanUp_IdempotentOnNilDb(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string]()
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 	// Should not panic when db is nil.
 	assert.NotPanics(t, store.CleanUp, "first CleanUp on nil db should not panic")
 	assert.NotPanics(t, store.CleanUp, "second CleanUp on nil db should not panic")
@@ -260,7 +259,7 @@ func TestCleanUp_IdempotentOnNilDb(t *testing.T) {
 
 func TestCleanUp_ClosesDatabase(t *testing.T) {
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	require.NoError(t, store.Open(), "Open() failed")
 
 	store.CleanUp()
@@ -285,13 +284,13 @@ func TestPersistence_DataSurvivesReopen(t *testing.T) {
 	dir := tempDir(t)
 
 	// Write data with the first instance.
-	s1 := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	s1 := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	require.NoError(t, s1.Open(), "Open() failed")
 	require.NoError(t, s1.Put("persistent", "data"), "Put() failed")
 	s1.CleanUp()
 
 	// Read data with a fresh instance pointing at the same directory.
-	s2 := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	s2 := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	require.NoError(t, s2.Open(), "second Open() failed")
 	defer s2.CleanUp()
 
@@ -369,7 +368,7 @@ func (errCodec) Unmarshal(_ []byte) (string, error) {
 
 func TestPut_MarshalError_ReturnsError(t *testing.T) {
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(errCodec{}))
+	store := NewChecksumIndexBoltDB[string](errCodec{}, WithDbPath[string](dir))
 	require.NoError(t, store.Open(), "Open() failed")
 	defer store.CleanUp()
 
@@ -380,13 +379,13 @@ func TestGet_UnmarshalError_ReturnsError(t *testing.T) {
 	dir := tempDir(t)
 
 	// Write valid data via a working codec.
-	goodStore := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(StringCodec{}))
+	goodStore := NewChecksumIndexBoltDB[string](StringCodec{}, WithDbPath[string](dir))
 	require.NoError(t, goodStore.Open(), "goodStore Open() failed")
 	require.NoError(t, goodStore.Put("k", "v"), "goodStore Put() failed")
 	goodStore.CleanUp()
 
 	// Now read with the errCodec — Unmarshal should fail.
-	badStore := NewChecksumIndexBoltDB[string](WithDbPath[string](dir), WithCodec(errCodec{}))
+	badStore := NewChecksumIndexBoltDB[string](errCodec{}, WithDbPath[string](dir))
 	require.NoError(t, badStore.Open(), "badStore Open() failed")
 	defer badStore.CleanUp()
 
@@ -407,7 +406,7 @@ func TestBoltChecksumIndex_ImplementsInterface(t *testing.T) {
 // by the package can be matched with errors.Is, i.e. they are not wrapped in
 // a way that loses identity.
 func TestSentinelErrors_AreInspectable(t *testing.T) {
-	store := NewChecksumIndexBoltDB[string](WithCodec(StringCodec{}))
+	store := NewChecksumIndexBoltDB[string](StringCodec{})
 
 	// ErrDatabaseNotOpened
 	err := store.Put("k", "v")
@@ -453,7 +452,7 @@ func (intCodec) Unmarshal(b []byte) (int, error) {
 
 func TestBoltChecksumIndex_IntGenericType(t *testing.T) {
 	dir := tempDir(t)
-	store := NewChecksumIndexBoltDB[int](WithDbPath[int](dir), WithCodec(intCodec{}))
+	store := NewChecksumIndexBoltDB[int](intCodec{}, WithDbPath[int](dir))
 	require.NoError(t, store.Open(), "Open() failed")
 	defer store.CleanUp()
 

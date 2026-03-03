@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ var (
 	ErrKeyNotFound           = errors.New("key not found")
 	ErrBucketNotFound        = errors.New("bucket not found")
 	ErrEmptyKey              = errors.New("key must not be empty")
+	ErrMissingCodec          = errors.New("codec must not be nil: provide a Codec[T] as the first argument to NewChecksumIndexBoltDB")
 )
 
 // Codec defines how values of type T are serialised to and from bytes.
@@ -51,6 +53,26 @@ func (ByteCodec) Unmarshal(b []byte) ([]byte, error) {
 	return b, nil
 }
 
+// Sha256Codec is a Codec[[32]byte] for SHA-256 checksums.
+// It stores the 32-byte array as-is and reads it back, returning an error
+// when the stored slice is not exactly 32 bytes.
+type Sha256Codec struct{}
+
+func (Sha256Codec) Marshal(v [32]byte) ([]byte, error) {
+	b := make([]byte, 32)
+	copy(b, v[:])
+	return b, nil
+}
+
+func (Sha256Codec) Unmarshal(b []byte) ([32]byte, error) {
+	var arr [32]byte
+	if len(b) != 32 {
+		return arr, fmt.Errorf("sha256: expected 32 bytes, got %d", len(b))
+	}
+	copy(arr[:], b)
+	return arr, nil
+}
+
 // BoltChecksumIndex is a generic key→value store backed by bbolt.
 type BoltChecksumIndex[T any] struct {
 	db     *bbolt.DB
@@ -72,13 +94,6 @@ func WithDbPath[T any](path string) BoltChecksumIndexOpts[T] {
 	}
 }
 
-// WithCodec sets the codec used to marshal/unmarshal values.
-func WithCodec[T any](codec Codec[T]) BoltChecksumIndexOpts[T] {
-	return func(b *BoltChecksumIndex[T]) {
-		b.codec = codec
-	}
-}
-
 // WithDefaultPath sets the store path to the module-conventional default
 // (./storage/store). The path argument is intentionally absent: if you need
 // a custom path use WithDbPath instead.
@@ -88,12 +103,14 @@ func WithDefaultPath[T any]() BoltChecksumIndexOpts[T] {
 	}
 }
 
-// NewChecksumIndexBoltDB constructs a BoltChecksumIndex with the given options.
+// NewChecksumIndexBoltDB constructs a BoltChecksumIndex.
+// codec is required — passing nil will cause Open to return ErrMissingCodec.
 // Call Open before using Put or Get.
-func NewChecksumIndexBoltDB[T any](opts ...BoltChecksumIndexOpts[T]) *BoltChecksumIndex[T] {
+func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts[T]) *BoltChecksumIndex[T] {
 	boltStore := &BoltChecksumIndex[T]{
 		logger: logging.NewCLogger(),
 		bucket: "checksums",
+		codec:  codec,
 	}
 
 	WithDefaultPath[T]()(boltStore)

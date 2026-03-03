@@ -18,9 +18,8 @@ func makeNode(t *testing.T, port string) *StorageNode {
 	t.Helper()
 
 	dir := t.TempDir()
-	cs := store.NewChecksumIndexBoltDB[[32]byte](
+	cs := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
 		store.WithDbPath[[32]byte](dir),
-		store.WithCodec[[32]byte](sha256ArrayCodec{}),
 	)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
@@ -34,25 +33,13 @@ func makeNode(t *testing.T, port string) *StorageNode {
 	)
 	require.NoError(t, err)
 
-	return NewStorageNode(
+	node, err := NewStorageNode(
 		StorageNodeConfig{Port: port, Timeout: 5 * time.Second},
 		logging.NewCLogger(),
 		ds,
 	)
-}
-
-// sha256ArrayCodec mirrors the codec used in other test files.
-type sha256ArrayCodec struct{}
-
-func (sha256ArrayCodec) Marshal(v [32]byte) ([]byte, error) {
-	b := make([]byte, 32)
-	copy(b, v[:])
-	return b, nil
-}
-func (sha256ArrayCodec) Unmarshal(b []byte) ([32]byte, error) {
-	var arr [32]byte
-	copy(arr[:], b)
-	return arr, nil
+	require.NoError(t, err)
+	return node
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"log/slog"
 	"net"
 
@@ -20,14 +21,24 @@ type StorageNode struct {
 	grpcServer *grpc.Server
 }
 
-// NewStorageNode constructs a StorageNode. Call Start to bind and begin serving.
-func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.Store) *StorageNode {
-	return &StorageNode{config: cfg, store: store, logger: logger}
+// NewStorageNode constructs a StorageNode. Returns an error if store or logger
+// is nil. Call Start to bind and begin serving.
+func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.Store) (*StorageNode, error) {
+	if store == nil {
+		return nil, errors.New("StorageNode: store must not be nil")
+	}
+	if logger == nil {
+		return nil, errors.New("StorageNode: logger must not be nil")
+	}
+	return &StorageNode{config: cfg, store: store, logger: logger}, nil
 }
 
 // Start binds the TCP listener and launches the gRPC server in a goroutine.
 // It returns immediately; use Stop to initiate a graceful shutdown.
 func (s *StorageNode) Start() error {
+	if err := s.config.Validate(); err != nil {
+		return err
+	}
 	s.logger.Info("StorageNode: binding TCP listener", slog.String("addr", s.config.Port))
 
 	listener, err := net.Listen("tcp", s.config.Port)
@@ -39,7 +50,10 @@ func (s *StorageNode) Start() error {
 
 	s.grpcServer = grpc.NewServer(grpc.ConnectionTimeout(s.config.Timeout))
 
-	storageServer := server.NewStorageServer(s.store, s.logger)
+	storageServer, err := server.NewStorageServer(s.store, s.logger)
+	if err != nil {
+		return err
+	}
 	pb_storage.RegisterStorageServiceServer(s.grpcServer, storageServer)
 
 	s.logger.Info("StorageNode: gRPC server starting",

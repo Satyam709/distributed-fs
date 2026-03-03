@@ -22,9 +22,8 @@ func newTestStore(t *testing.T) store.Store {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs := store.NewChecksumIndexBoltDB[[32]byte](
+	cs := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
 		store.WithDbPath[[32]byte](dir),
-		store.WithCodec[[32]byte](sha256ArrayCodec{}),
 	)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
@@ -38,21 +37,6 @@ func newTestStore(t *testing.T) store.Store {
 	)
 	require.NoError(t, err)
 	return ds
-}
-
-// sha256ArrayCodec is the same codec used by disk_store_test.go.
-type sha256ArrayCodec struct{}
-
-func (sha256ArrayCodec) Marshal(v [32]byte) ([]byte, error) {
-	b := make([]byte, 32)
-	copy(b, v[:])
-	return b, nil
-}
-
-func (sha256ArrayCodec) Unmarshal(b []byte) ([32]byte, error) {
-	var arr [32]byte
-	copy(arr[:], b)
-	return arr, nil
 }
 
 // checksum returns the hex-encoded SHA-256 of data — what ChunkWriter computes.

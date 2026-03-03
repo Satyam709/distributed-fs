@@ -3,6 +3,7 @@ package chunk
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"hash"
 	"log/slog"
 	"os"
@@ -31,6 +32,12 @@ type ChunkWriter struct {
 }
 
 func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
+	if chunkId == "" {
+		return nil, dfserrors.ErrInvalidChunkId
+	}
+	if store == nil {
+		return nil, errors.New("ChunkWriter: store must not be nil")
+	}
 	logger := logging.NewCLogger()
 	logger.Logger = *logger.Logger.With(
 		slog.String("component", "ChunkWriter"),

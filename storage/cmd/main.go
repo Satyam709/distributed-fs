@@ -21,7 +21,7 @@ func main() {
 
 	// ── Checksum Index (BoltDB) ──────────────────────────────────────────────
 	logger.Info("opening checksum index (BoltDB)")
-	boltDb := store.NewChecksumIndexBoltDB[[32]byte]()
+	boltDb := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{})
 	if err := boltDb.Open(); err != nil {
 		logger.FatalError("failed to open checksum-store", err)
 	}
@@ -53,7 +53,10 @@ func main() {
 
 	// ── Storage Node ─────────────────────────────────────────────────────────
 	config := storage.StorageNodeConfig{Port: ":4000", Timeout: 120 * time.Second}
-	node := storage.NewStorageNode(config, logger, diskStore)
+	node, err := storage.NewStorageNode(config, logger, diskStore)
+	if err != nil {
+		logger.FatalError("failed to create storage node", err)
+	}
 
 	if err := node.Start(); err != nil {
 		logger.FatalError("failed to start storage node", err)
