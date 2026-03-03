@@ -235,6 +235,29 @@ func (c *BoltChecksumIndex[T]) PutAll(data []KeyValue[T]) error {
 	return nil
 }
 
+// Delete removes the entry stored under key. Returns ErrEmptyKey for empty
+// keys, ErrDatabaseNotOpened if Open has not been called, and ErrKeyNotFound
+// if the key does not exist in the bucket.
+func (c *BoltChecksumIndex[T]) Delete(key string) error {
+	if key == "" {
+		return ErrEmptyKey
+	}
+	if c.db == nil {
+		return ErrDatabaseNotOpened
+	}
+
+	return c.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(c.bucket))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+		if bucket.Get([]byte(key)) == nil {
+			return ErrKeyNotFound
+		}
+		return bucket.Delete([]byte(key))
+	})
+}
+
 // CleanUp closes the underlying bbolt database. It is safe to call multiple
 // times; subsequent calls are no-ops.
 func (c *BoltChecksumIndex[T]) CleanUp() {

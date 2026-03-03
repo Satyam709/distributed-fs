@@ -12,6 +12,9 @@ import (
 type DiskStore struct {
 	// rootDir is the base directory path where all chunks are stored
 	rootDir string
+
+	tempDir string
+
 	// splitLevel determines the depth of directory sharding for chunk storage.
 	// For example, with splitLevel=2, a chunk named "adwjij2jj424" is stored at
 	// rootDir/ad/wj/adwjij2jj424.chunk, distributing chunks across subdirectories
@@ -48,8 +51,111 @@ var (
 	InsufficientSpace   = errors.New("insufficient space")
 )
 
-// Delete removes a value from the disk store
+// WithRootDir sets the root directory for the DiskStore.
+func WithRootDir(dir string) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.rootDir = dir
+	}
+}
+
+// WithTempDir sets the root directory for the DiskStore.
+func WithTempDir(dir string) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.tempDir = dir
+	}
+}
+
+// WithSplitLevel sets the directory sharding depth.
+func WithSplitLevel(level uint16) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.splitLevel = level
+	}
+}
+
+// WithTotalSpace sets the maximum space the store may use (in bytes).
+func WithTotalSpace(bytes uint64) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.totalSpace = bytes
+	}
+}
+
+// WithChecksumStore injects the checksum index implementation.
+func WithChecksumStore(cs ChecksumIndexStore[[32]byte]) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.checksumStore = cs
+	}
+}
+
+// NewDiskStore constructs a DiskStore with sensible defaults:
+//   - rootDir = "." (current directory)
+//   - splitLevel = DIR_SHARD_LEVEL (2)
+//   - totalSpace = DEFAULT_STORE_SIZE (4 GiB)
+//
+// Callers must supply a checksumStore via WithChecksumStore and call
+// checksumStore.Open() before using the DiskStore.
+func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
+	ds := &DiskStore{
+		rootDir:    ".",
+		tempDir:    ".",
+		splitLevel: DIR_SHARD_LEVEL,
+		totalSpace: DEFAULT_STORE_SIZE,
+	}
+	for _, opt := range opts {
+		opt(ds)
+	}
+	err := os.MkdirAll(ds.rootDir, 0700)
+	err = os.MkdirAll(ds.tempDir, 0700)
+
+	if err != nil {
+		return nil, err
+	}
+	return ds, nil
+}
+
+// Delete removes a chunk from the disk store.
+// It removes the on-disk file, deletes the checksum index entry, and
+// decrements usedSpace. Returns ChunkNotFound if the chunk does not exist.
 func (ds *DiskStore) Delete(chunkId string) error {
+	if chunkId == "" {
+		return InvalidChunkId
+	}
+
+	if !ds.Exists(chunkId) {
+		return ChunkNotFound
+	}
+
+	fullPath, err := ds.PathForChunk(chunkId)
+	if err != nil {
+		return err
+	}
+	chunkPath := filepath.Join(ds.rootDir, fullPath)
+
+	info, err := os.Stat(chunkPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ChunkNotFound
+		}
+		return err
+	}
+	fileSize := uint64(info.Size())
+
+	if err := os.Remove(chunkPath); err != nil {
+		return fmt.Errorf("%w: %v", FailedToDeleteChunk, err)
+	}
+
+	// Remove from checksum index; best-effort — if this fails we log
+	// but don't leave a deleted file referenced anymore.
+	if err := ds.checksumStore.Delete(chunkId); err != nil && !errors.Is(err, ErrKeyNotFound) {
+		// Non-fatal; file is already removed.
+		_ = err
+	}
+
+	if ds.usedSpace >= fileSize {
+		ds.usedSpace -= fileSize
+	} else {
+		ds.usedSpace = 0
+	}
+
 	return nil
 }
 
@@ -60,8 +166,8 @@ func (ds *DiskStore) List() ([]string, error) {
 
 // Exists checks if a key exists in the disk store
 func (ds *DiskStore) Exists(chunkId string) bool {
-	val, err := ds.checksumStore.Get(chunkId)
-	return err == nil && len(val) != 0
+	_, err := ds.checksumStore.Get(chunkId)
+	return err == nil
 }
 
 // Write stores a value in the disk store
@@ -114,24 +220,35 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 	return nil
 }
 
-// Rename takes the source file and renames it to the destination
-// example
-// from source = /store/temp/xyz.tmp
-// to dest = /store/ab/sd/final.chunk
-// This func is crucial to finalize the chunk
+// Rename takes the source file and renames it to the destination chunk path,
+// then records the checksum and updates usedSpace.
+//
+// example:
+//
+//	from source = /store/temp/xyz.tmp
+//	to dest     = rootDir/ab/sd/final.chunk
+//
+// This func is crucial to finalise a chunk written via ChunkWriter.
 func (ds *DiskStore) Rename(source, chunkId string) error {
+	if chunkId == "" {
+		return InvalidChunkId
+	}
+
 	if _, err := os.Stat(source); err != nil {
 		return err
 	}
-	dest, err := getFullPathForChunkId(chunkId, ds.splitLevel)
+
+	relDest, err := ds.PathForChunk(chunkId)
 	if err != nil {
 		return err
 	}
+	dest := filepath.Join(ds.rootDir, relDest)
 	destDir := filepath.Dir(dest)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err
 	}
 
+	// fsync the source file before rename for durability.
 	f, err := os.Open(source)
 	if err != nil {
 		return err
@@ -148,11 +265,22 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 		return err
 	}
 
-	dirFd, err := os.Open(destDir)
-	if err == nil {
+	// fsync the destination directory so the rename is visible after crash.
+	if dirFd, err := os.Open(destDir); err == nil {
 		_ = dirFd.Sync()
 		_ = dirFd.Close()
 	}
+
+	// Read the newly-placed file to compute its checksum and size.
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		return err
+	}
+	checksum := sha256.Sum256(data)
+	if err := ds.checksumStore.Put(chunkId, checksum); err != nil {
+		return err
+	}
+	ds.usedSpace += uint64(len(data))
 
 	return nil
 }
@@ -163,7 +291,7 @@ func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
 		return nil, ChunkNotFound
 	}
 
-	res, err := getFullPathForChunkId(chunkId, ds.splitLevel)
+	res, err := ds.PathForChunk(chunkId)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +325,24 @@ func (ds *DiskStore) Verify(chunkId string) error {
 	return nil
 }
 
+// TempDir returns the filepath for tempStoring of chunk
+func (ds *DiskStore) TempDir(chunkId string) string {
+	return filepath.Join(ds.tempDir, fmt.Sprintf("%s.%s", chunkId, ".tmp"))
+}
+
+// PathForChunk returns the full relative path (from rootDir) for a chunk.
+// for example say for chunkid abcdefghijk... and shardLvl = 2
+// it returns ab/cd/abcdefghijk....chunk
+func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
+	res, err := getDirForChunkId(chunkId, ds.splitLevel)
+	if err != nil {
+		return "", err
+	}
+
+	chunkPath := filepath.Join(res, fmt.Sprintf("%s.%s", chunkId, "chunk"))
+	return chunkPath, nil
+}
+
 // FreeSpace returns the available space on disk
 func (ds *DiskStore) FreeSpace() (uint64, error) {
 	return max(ds.totalSpace-ds.usedSpace, 0), nil
@@ -227,17 +373,4 @@ func getDirForChunkId(chunkId string, shardLvl uint16) (string, error) {
 	}
 
 	return pathBuilder.String(), nil
-}
-
-// getDirForChunkId returns the required dir after sharding process
-// for example say for chunkid abcdefghijk... and shardLvl = 2
-// it returns ab/cd/
-func getFullPathForChunkId(chunkId string, shardLvl uint16) (string, error) {
-	res, err := getDirForChunkId(chunkId, shardLvl)
-	if err != nil {
-		return "", err
-	}
-
-	chunkPath := filepath.Join(res, fmt.Sprintf("%s.%s", chunkId, "chunk"))
-	return chunkPath, nil
 }

@@ -14,7 +14,7 @@ message PutChunkRequest {
   // 32kb frame of 4mb chunk
   bytes data = 4;
   // Checksum of this frame (SHA256)
-  string checksum = 5;
+  bytes checksum = 5;
   // signals the end of the stream
   bool is_last = 6;
 }

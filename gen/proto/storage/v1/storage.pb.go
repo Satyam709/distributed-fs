@@ -30,7 +30,7 @@ type PutChunkRequest struct {
 	// 32kb frame of 4mb chunk
 	Data []byte `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	// Checksum of this frame (SHA256)
-	Checksum string `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum []byte `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	// signals the end of the stream
 	IsLast        bool `protobuf:"varint,6,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -95,11 +95,11 @@ func (x *PutChunkRequest) GetData() []byte {
 	return nil
 }
 
-func (x *PutChunkRequest) GetChecksum() string {
+func (x *PutChunkRequest) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 func (x *PutChunkRequest) GetIsLast() bool {
@@ -611,7 +611,7 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12=\n" +
 	"\freplicate_to\x18\x03 \x03(\v2\x1a.proto.storage.v1.NodeInfoR\vreplicateTo\x12\x12\n" +
 	"\x04data\x18\x04 \x01(\fR\x04data\x12\x1a\n" +
-	"\bchecksum\x18\x05 \x01(\tR\bchecksum\x12\x17\n" +
+	"\bchecksum\x18\x05 \x01(\fR\bchecksum\x12\x17\n" +
 	"\ais_last\x18\x06 \x01(\bR\x06isLast\"\x93\x01\n" +
 	"\x10PutChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +

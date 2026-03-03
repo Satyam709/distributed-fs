@@ -6,9 +6,11 @@ type Store interface {
 	Read(string) ([]byte, error)
 	Delete(string) error
 	Exists(string) bool
+	TempDir(string) string
 	Verify(string) error
 	List() ([]string, error)
 	FreeSpace() (uint64, error)
+	PathForChunk(string) (string, error)
 	Size() (uint64, error)
 }
 
@@ -26,6 +28,9 @@ type ChecksumIndexStore[T any] interface {
 	Get(string) (T, error)
 	// GetAll retrieves all the stored keys.
 	GetAll() ([]string, error)
+	// Delete removes the entry for key. Returns ErrKeyNotFound if the key does
+	// not exist and ErrDatabaseNotOpened if Open has not been called.
+	Delete(string) error
 	// PutAll puts all the keys at once
 	PutAll([]KeyValue[T]) error
 	// CleanUp releases all resources held by the store.
