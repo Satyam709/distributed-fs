@@ -19,14 +19,6 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	// ── Checksum Index (BoltDB) ──────────────────────────────────────────────
-	logger.Info("opening checksum index (BoltDB)")
-	boltDb := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{})
-	if err := boltDb.Open(); err != nil {
-		logger.FatalError("failed to open checksum-store", err)
-	}
-	logger.Info("checksum index opened")
-
 	// ── Working Directory ────────────────────────────────────────────────────
 	pwd, err := os.Getwd()
 	if err != nil {
@@ -37,6 +29,16 @@ func main() {
 		slog.String("rootDataDir", rootDataDir),
 		slog.String("tempDir", filepath.Join(rootDataDir, "tmp")),
 	)
+
+	// ── Checksum Index (BoltDB) ──────────────────────────────────────────────
+	logger.Info("opening checksum index (BoltDB)")
+	boltDb := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
+		store.WithDbPath[[32]byte](rootDataDir))
+
+	if err := boltDb.Open(); err != nil {
+		logger.FatalError("failed to open checksum-store", err)
+	}
+	logger.Info("checksum index opened")
 
 	// ── Disk Store ───────────────────────────────────────────────────────────
 	logger.Info("creating disk store")
