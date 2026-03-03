@@ -2,11 +2,14 @@ package store
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+
+	dfserrors "github.com/satyam709/distributed-fs/internal/errors"
+	"github.com/satyam709/distributed-fs/internal/logging"
 )
 
 type DiskStore struct {
@@ -28,6 +31,8 @@ type DiskStore struct {
 	totalSpace uint64
 
 	usedSpace uint64
+
+	logger *logging.CLogger
 }
 
 // DiskStoreBuilder
@@ -43,12 +48,15 @@ const (
 	DIR_SHARD_LEVEL    = 2
 )
 
+// Sentinel errors — canonical definitions live in internal/errors; these
+// aliases are kept for backward-compatibility with existing store-internal
+// code (e.g. disk_store_test.go).
 var (
-	InvalidChunkId      = errors.New("chunk-id is not valid")
-	ChunkNotFound       = errors.New("chunk not found")
-	FailedToDeleteChunk = errors.New("chunk deletion failed")
-	VerifyFailed        = errors.New("chunk mismatch checksum verification failed")
-	InsufficientSpace   = errors.New("insufficient space")
+	InvalidChunkId      = dfserrors.ErrInvalidChunkId
+	ChunkNotFound       = dfserrors.ErrChunkNotFound
+	FailedToDeleteChunk = dfserrors.ErrFailedToDelete
+	VerifyFailed        = dfserrors.ErrVerifyFailed
+	InsufficientSpace   = dfserrors.ErrInsufficientSpace
 )
 
 // WithRootDir sets the root directory for the DiskStore.
@@ -86,6 +94,13 @@ func WithChecksumStore(cs ChecksumIndexStore[[32]byte]) DiskStoreOptions {
 	}
 }
 
+// WithDiskStoreLogger injects a logger into the DiskStore.
+func WithDiskStoreLogger(l *logging.CLogger) DiskStoreOptions {
+	return func(ds *DiskStore) {
+		ds.logger = l
+	}
+}
+
 // NewDiskStore constructs a DiskStore with sensible defaults:
 //   - rootDir = "." (current directory)
 //   - splitLevel = DIR_SHARD_LEVEL (2)
@@ -99,16 +114,31 @@ func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
 		tempDir:    ".",
 		splitLevel: DIR_SHARD_LEVEL,
 		totalSpace: DEFAULT_STORE_SIZE,
+		logger:     logging.NewCLogger(),
 	}
+	ds.logger.Logger = *ds.logger.Logger.With(slog.String("component", "DiskStore"))
+
 	for _, opt := range opts {
 		opt(ds)
 	}
-	err := os.MkdirAll(ds.rootDir, 0700)
-	err = os.MkdirAll(ds.tempDir, 0700)
 
-	if err != nil {
+	ds.logger.Info("initialising DiskStore",
+		slog.String("rootDir", ds.rootDir),
+		slog.String("tempDir", ds.tempDir),
+		slog.Uint64("totalSpaceBytes", ds.totalSpace),
+		slog.Int("splitLevel", int(ds.splitLevel)),
+	)
+
+	if err := os.MkdirAll(ds.rootDir, 0700); err != nil {
+		ds.logger.Error("failed to create rootDir", err, slog.String("path", ds.rootDir))
 		return nil, err
 	}
+	if err := os.MkdirAll(ds.tempDir, 0700); err != nil {
+		ds.logger.Error("failed to create tempDir", err, slog.String("path", ds.tempDir))
+		return nil, err
+	}
+
+	ds.logger.Info("DiskStore ready")
 	return ds, nil
 }
 
@@ -116,11 +146,14 @@ func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
 // It removes the on-disk file, deletes the checksum index entry, and
 // decrements usedSpace. Returns ChunkNotFound if the chunk does not exist.
 func (ds *DiskStore) Delete(chunkId string) error {
+	ds.logger.Debug("Delete", slog.String("chunkId", chunkId))
+
 	if chunkId == "" {
 		return InvalidChunkId
 	}
 
 	if !ds.Exists(chunkId) {
+		ds.logger.Debug("Delete: chunk not found", slog.String("chunkId", chunkId))
 		return ChunkNotFound
 	}
 
@@ -140,14 +173,15 @@ func (ds *DiskStore) Delete(chunkId string) error {
 	fileSize := uint64(info.Size())
 
 	if err := os.Remove(chunkPath); err != nil {
+		ds.logger.Error("Delete: os.Remove failed", err, slog.String("path", chunkPath))
 		return fmt.Errorf("%w: %v", FailedToDeleteChunk, err)
 	}
 
 	// Remove from checksum index; best-effort — if this fails we log
-	// but don't leave a deleted file referenced anymore.
-	if err := ds.checksumStore.Delete(chunkId); err != nil && !errors.Is(err, ErrKeyNotFound) {
-		// Non-fatal; file is already removed.
-		_ = err
+	// but don't return an error since the file is already gone.
+	if err := ds.checksumStore.Delete(chunkId); err != nil && err != ErrKeyNotFound {
+		ds.logger.Error("Delete: checksum index removal failed (non-fatal)", err,
+			slog.String("chunkId", chunkId))
 	}
 
 	if ds.usedSpace >= fileSize {
@@ -156,6 +190,11 @@ func (ds *DiskStore) Delete(chunkId string) error {
 		ds.usedSpace = 0
 	}
 
+	ds.logger.Info("Delete: chunk removed",
+		slog.String("chunkId", chunkId),
+		slog.Uint64("freedBytes", fileSize),
+		slog.Uint64("usedSpaceBytes", ds.usedSpace),
+	)
 	return nil
 }
 
@@ -170,12 +209,14 @@ func (ds *DiskStore) Exists(chunkId string) bool {
 	return err == nil
 }
 
-// Write stores a value in the disk store
+// Write stores a value in the disk store.
 // Although this func is not to be used often
 // Since we use ChunkWriter to write our frames
 // To add entry to DiskStore
 // We Should Use DiskStore.Move/Rename
 func (ds *DiskStore) Write(chunkId string, value []byte) error {
+	ds.logger.Debug("Write", slog.String("chunkId", chunkId), slog.Int("bytes", len(value)))
+
 	if chunkId == "" {
 		return InvalidChunkId
 	}
@@ -186,6 +227,11 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 		return err
 	}
 	if uint64(len(value)) > freeSpace {
+		ds.logger.Error("Write: insufficient space", nil,
+			slog.String("chunkId", chunkId),
+			slog.Uint64("needed", uint64(len(value))),
+			slog.Uint64("available", freeSpace),
+		)
 		return InsufficientSpace
 	}
 
@@ -199,24 +245,32 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 
 	// Create directory structure if it doesn't exist
 	if err := os.MkdirAll(fullDirPath, 0755); err != nil {
+		ds.logger.Error("Write: failed to create shard dir", err, slog.String("path", fullDirPath))
 		return err
 	}
 
 	// Write the chunk file
 	chunkPath := filepath.Join(fullDirPath, fmt.Sprintf("%s.%s", chunkId, "chunk"))
 	if err := os.WriteFile(chunkPath, value, 0644); err != nil {
+		ds.logger.Error("Write: os.WriteFile failed", err, slog.String("path", chunkPath))
 		return err
 	}
 
 	// Calculate and store checksum
 	checksum := sha256.Sum256(value)
 	if err := ds.checksumStore.Put(chunkId, checksum); err != nil {
+		ds.logger.Error("Write: checksum put failed", err, slog.String("chunkId", chunkId))
 		return err
 	}
 
 	// Update used space
 	ds.usedSpace += uint64(len(value))
 
+	ds.logger.Info("Write: chunk stored",
+		slog.String("chunkId", chunkId),
+		slog.Int("bytes", len(value)),
+		slog.Uint64("usedSpaceBytes", ds.usedSpace),
+	)
 	return nil
 }
 
@@ -230,11 +284,14 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 //
 // This func is crucial to finalise a chunk written via ChunkWriter.
 func (ds *DiskStore) Rename(source, chunkId string) error {
+	ds.logger.Debug("Rename", slog.String("source", source), slog.String("chunkId", chunkId))
+
 	if chunkId == "" {
 		return InvalidChunkId
 	}
 
 	if _, err := os.Stat(source); err != nil {
+		ds.logger.Error("Rename: source stat failed", err, slog.String("source", source))
 		return err
 	}
 
@@ -245,6 +302,7 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 	dest := filepath.Join(ds.rootDir, relDest)
 	destDir := filepath.Dir(dest)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
+		ds.logger.Error("Rename: failed to create dest dir", err, slog.String("destDir", destDir))
 		return err
 	}
 
@@ -262,6 +320,8 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 	}
 
 	if err := os.Rename(source, dest); err != nil {
+		ds.logger.Error("Rename: os.Rename failed", err,
+			slog.String("src", source), slog.String("dst", dest))
 		return err
 	}
 
@@ -278,15 +338,24 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 	}
 	checksum := sha256.Sum256(data)
 	if err := ds.checksumStore.Put(chunkId, checksum); err != nil {
+		ds.logger.Error("Rename: checksum put failed", err, slog.String("chunkId", chunkId))
 		return err
 	}
 	ds.usedSpace += uint64(len(data))
 
+	ds.logger.Info("Rename: chunk committed",
+		slog.String("chunkId", chunkId),
+		slog.String("dest", dest),
+		slog.Int("bytes", len(data)),
+		slog.Uint64("usedSpaceBytes", ds.usedSpace),
+	)
 	return nil
 }
 
 // Read retrieves a value from the disk store
 func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
+	ds.logger.Debug("Read", slog.String("chunkId", chunkId))
+
 	if !ds.Exists(chunkId) {
 		return nil, ChunkNotFound
 	}
@@ -300,14 +369,18 @@ func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
 
 	data, err := os.ReadFile(chunkPath)
 	if err != nil {
+		ds.logger.Error("Read: ReadFile failed", err, slog.String("path", chunkPath))
 		return nil, err
 	}
 
+	ds.logger.Debug("Read: ok", slog.String("chunkId", chunkId), slog.Int("bytes", len(data)))
 	return data, nil
 }
 
 // Verify checks the integrity of a key in the disk store
 func (ds *DiskStore) Verify(chunkId string) error {
+	ds.logger.Debug("Verify", slog.String("chunkId", chunkId))
+
 	val, err := ds.checksumStore.Get(chunkId)
 	if err != nil {
 		return err
@@ -319,9 +392,12 @@ func (ds *DiskStore) Verify(chunkId string) error {
 	calculatedHash := sha256.Sum256(data)
 
 	if calculatedHash != val {
+		ds.logger.Error("Verify: checksum mismatch", dfserrors.ErrVerifyFailed,
+			slog.String("chunkId", chunkId))
 		return VerifyFailed
 	}
 
+	ds.logger.Debug("Verify: ok", slog.String("chunkId", chunkId))
 	return nil
 }
 

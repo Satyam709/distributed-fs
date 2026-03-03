@@ -110,28 +110,41 @@ func NewChecksumIndexBoltDB[T any](opts ...BoltChecksumIndexOpts[T]) *BoltChecks
 // exists. Returns ErrDatabaseAlreadyOpened if Open has already been called.
 func (c *BoltChecksumIndex[T]) Open() error {
 	if c.db != nil {
+		c.logger.Debug("Open: database already open")
 		return ErrDatabaseAlreadyOpened
 	}
 
 	dbFile, err := filepath.Abs(filepath.Join(c.path, "checksum.db"))
-
 	if err != nil {
+		c.logger.Error("Open: failed to resolve db path", err, slog.String("path", c.path))
 		return err
 	}
 
-	// ensure the path exist
+	c.logger.Info("Open: opening BoltDB", slog.String("file", dbFile))
+
+	// ensure the path exists
 	if err = os.MkdirAll(filepath.Dir(dbFile), 0700); err != nil {
+		c.logger.Error("Open: failed to create db dir", err, slog.String("dir", filepath.Dir(dbFile)))
 		return err
 	}
 
 	c.db, err = bbolt.Open(dbFile, 0600, nil)
 	if err != nil {
+		c.logger.Error("Open: bbolt.Open failed", err, slog.String("file", dbFile))
 		return err
 	}
-	return c.db.Update(func(tx *bbolt.Tx) error {
+
+	err = c.db.Update(func(tx *bbolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(c.bucket))
 		return err
 	})
+	if err != nil {
+		c.logger.Error("Open: failed to create bucket", err, slog.String("bucket", c.bucket))
+		return err
+	}
+
+	c.logger.Info("Open: ready", slog.String("file", dbFile), slog.String("bucket", c.bucket))
+	return nil
 }
 
 // Put stores value under key. Returns ErrEmptyKey for empty keys and
@@ -144,7 +157,9 @@ func (c *BoltChecksumIndex[T]) Put(key string, value T) error {
 		return ErrDatabaseNotOpened
 	}
 
-	return c.db.Update(func(tx *bbolt.Tx) error {
+	c.logger.Debug("Put", slog.String("key", key))
+
+	err := c.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(c.bucket))
 		if bucket == nil {
 			return ErrBucketNotFound
@@ -157,6 +172,10 @@ func (c *BoltChecksumIndex[T]) Put(key string, value T) error {
 
 		return bucket.Put([]byte(key), data)
 	})
+	if err != nil {
+		c.logger.Error("Put: failed", err, slog.String("key", key))
+	}
+	return err
 }
 
 // Get retrieves the value stored under key. Returns ErrKeyNotFound when the
@@ -167,6 +186,8 @@ func (c *BoltChecksumIndex[T]) Get(key string) (T, error) {
 	if c.db == nil {
 		return zero, ErrDatabaseNotOpened
 	}
+
+	c.logger.Debug("Get", slog.String("key", key))
 
 	var result T
 
@@ -190,6 +211,9 @@ func (c *BoltChecksumIndex[T]) Get(key string) (T, error) {
 		return nil
 	})
 
+	if err != nil && !errors.Is(err, ErrKeyNotFound) {
+		c.logger.Error("Get: failed", err, slog.String("key", key))
+	}
 	return result, err
 }
 
@@ -246,7 +270,9 @@ func (c *BoltChecksumIndex[T]) Delete(key string) error {
 		return ErrDatabaseNotOpened
 	}
 
-	return c.db.Update(func(tx *bbolt.Tx) error {
+	c.logger.Debug("Delete", slog.String("key", key))
+
+	err := c.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(c.bucket))
 		if bucket == nil {
 			return ErrBucketNotFound
@@ -256,15 +282,22 @@ func (c *BoltChecksumIndex[T]) Delete(key string) error {
 		}
 		return bucket.Delete([]byte(key))
 	})
+	if err != nil && !errors.Is(err, ErrKeyNotFound) {
+		c.logger.Error("Delete: failed", err, slog.String("key", key))
+	}
+	return err
 }
 
 // CleanUp closes the underlying bbolt database. It is safe to call multiple
 // times; subsequent calls are no-ops.
 func (c *BoltChecksumIndex[T]) CleanUp() {
-	if c.db != nil {
-		if err := c.db.Close(); err != nil {
-			c.logger.Error("Error while closing", err)
-		}
-		c.db = nil
+	if c.db == nil {
+		return
 	}
+	c.logger.Info("CleanUp: closing BoltDB")
+	if err := c.db.Close(); err != nil {
+		c.logger.Error("CleanUp: error closing database", err)
+	}
+	c.db = nil
+	c.logger.Info("CleanUp: database closed")
 }
