@@ -37,6 +37,6 @@ type ChecksumIndexStore[T any] interface {
 	CleanUp()
 }
 type KeyValue[T any] struct {
-	key   string
-	value T
+	Key   string
+	Value T
 }

@@ -516,7 +516,13 @@ func (ds *DiskStore) TempDir(chunkId string) (string, error) {
 // PathForChunk returns the full relative path (from rootDir) for a chunk.
 // for example say for chunkid abcdefghijk... and shardLvl = 2
 // it returns ab/cd/abcdefghijk....chunk
+// Returns InvalidChunkId if chunkId fails validation (empty, too short,
+// contains path separators, or ".." sequences).
 func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
+	if err := ds.validateChunkId(chunkId); err != nil {
+		return "", err
+	}
+
 	res, err := getDirForChunkId(chunkId, ds.splitLevel)
 	if err != nil {
 		return "", err
@@ -528,6 +534,8 @@ func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
 
 // FreeSpace returns the available space on disk
 func (ds *DiskStore) FreeSpace() (uint64, error) {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
 	if ds.usedSpace > ds.totalSpace {
 		return 0, nil
 	}

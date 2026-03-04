@@ -480,9 +480,9 @@ func TestGetAllKeys(t *testing.T) {
 		{
 			name: "valid test case with multiple keys",
 			keys: []KeyValue[string]{
-				{key: "first", value: "value1"},
-				{key: "sec", value: "value2"},
-				{key: "third", value: "value3"},
+				{Key: "first", Value: "value1"},
+				{Key: "sec", Value: "value2"},
+				{Key: "third", Value: "value3"},
 			},
 			expectedResult: []string{"first", "sec", "third"},
 			expectedError:  nil,
@@ -496,7 +496,7 @@ func TestGetAllKeys(t *testing.T) {
 		{
 			name: "single key",
 			keys: []KeyValue[string]{
-				{key: "only", value: "value"},
+				{Key: "only", Value: "value"},
 			},
 			expectedResult: []string{"only"},
 			expectedError:  nil,

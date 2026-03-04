@@ -273,7 +273,7 @@ func (c *BoltChecksumIndex[T]) PutAll(data []KeyValue[T]) error {
 	}
 
 	for _, val := range data {
-		err := c.Put(val.key, val.value)
+		err := c.Put(val.Key, val.Value)
 		if err != nil {
 			return err
 		}
