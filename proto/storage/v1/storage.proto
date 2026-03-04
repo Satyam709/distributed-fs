@@ -14,7 +14,7 @@ message PutChunkRequest {
   // 32kb frame of 4mb chunk
   bytes data = 4;
   // Checksum of this frame (SHA256)
-  string checksum = 5;
+  bytes checksum = 5;
   // signals the end of the stream
   bool is_last = 6;
 }
@@ -29,7 +29,7 @@ message PutChunkResponse {
   // Rest of the data
   string chunk_id = 2;
   // 32kb frame of 4mb chunk
-  string checksum = 3;
+  bytes checksum = 3;
 }
 
 /*
@@ -59,7 +59,7 @@ message GetChunkResponse {
   // 32kb frame of 4mb chunk
   bytes data = 3;
   // Checksum of this frame (SHA256)
-  string checksum = 4;
+  bytes checksum = 4;
   // signals the end of the stream
   bool is_last = 5;
 }
@@ -84,7 +84,7 @@ message DeleteChunkResponse {
 */
 message VerifyChunkRequest {
   string chunk_id = 1;
-  string checksum = 4;
+  bytes checksum = 4;
 }
 
 /*

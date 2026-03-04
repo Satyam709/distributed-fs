@@ -30,7 +30,7 @@ type PutChunkRequest struct {
 	// 32kb frame of 4mb chunk
 	Data []byte `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	// Checksum of this frame (SHA256)
-	Checksum string `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum []byte `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	// signals the end of the stream
 	IsLast        bool `protobuf:"varint,6,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -95,11 +95,11 @@ func (x *PutChunkRequest) GetData() []byte {
 	return nil
 }
 
-func (x *PutChunkRequest) GetChecksum() string {
+func (x *PutChunkRequest) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 func (x *PutChunkRequest) GetIsLast() bool {
@@ -117,7 +117,7 @@ type PutChunkResponse struct {
 	// Rest of the data
 	ChunkId string `protobuf:"bytes,2,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
 	// 32kb frame of 4mb chunk
-	Checksum      string `protobuf:"bytes,3,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum      []byte `protobuf:"bytes,3,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -166,11 +166,11 @@ func (x *PutChunkResponse) GetChunkId() string {
 	return ""
 }
 
-func (x *PutChunkResponse) GetChecksum() string {
+func (x *PutChunkResponse) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 // Response - general embedded fields present in all server responses
@@ -289,7 +289,7 @@ type GetChunkResponse struct {
 	// 32kb frame of 4mb chunk
 	Data []byte `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
 	// Checksum of this frame (SHA256)
-	Checksum string `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum []byte `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	// signals the end of the stream
 	IsLast        bool `protobuf:"varint,5,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -347,11 +347,11 @@ func (x *GetChunkResponse) GetData() []byte {
 	return nil
 }
 
-func (x *GetChunkResponse) GetChecksum() string {
+func (x *GetChunkResponse) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 func (x *GetChunkResponse) GetIsLast() bool {
@@ -463,7 +463,7 @@ func (x *DeleteChunkResponse) GetSuccess() bool {
 type VerifyChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
-	Checksum      string                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum      []byte                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -505,11 +505,11 @@ func (x *VerifyChunkRequest) GetChunkId() string {
 	return ""
 }
 
-func (x *VerifyChunkRequest) GetChecksum() string {
+func (x *VerifyChunkRequest) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 // VerifyChunkResponse - response structure for chunk verification result
@@ -611,12 +611,12 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12=\n" +
 	"\freplicate_to\x18\x03 \x03(\v2\x1a.proto.storage.v1.NodeInfoR\vreplicateTo\x12\x12\n" +
 	"\x04data\x18\x04 \x01(\fR\x04data\x12\x1a\n" +
-	"\bchecksum\x18\x05 \x01(\tR\bchecksum\x12\x17\n" +
+	"\bchecksum\x18\x05 \x01(\fR\bchecksum\x12\x17\n" +
 	"\ais_last\x18\x06 \x01(\bR\x06isLast\"\x93\x01\n" +
 	"\x10PutChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12\x1a\n" +
-	"\bchecksum\x18\x03 \x01(\tR\bchecksumB\v\n" +
+	"\bchecksum\x18\x03 \x01(\fR\bchecksumB\v\n" +
 	"\t_response\"U\n" +
 	"\bResponse\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x10\n" +
@@ -629,7 +629,7 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12\x12\n" +
 	"\x04data\x18\x03 \x01(\fR\x04data\x12\x1a\n" +
-	"\bchecksum\x18\x04 \x01(\tR\bchecksum\x12\x17\n" +
+	"\bchecksum\x18\x04 \x01(\fR\bchecksum\x12\x17\n" +
 	"\ais_last\x18\x05 \x01(\bR\x06isLastB\v\n" +
 	"\t_response\"/\n" +
 	"\x12DeleteChunkRequest\x12\x19\n" +
@@ -640,7 +640,7 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\t_response\"K\n" +
 	"\x12VerifyChunkRequest\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x1a\n" +
-	"\bchecksum\x18\x04 \x01(\tR\bchecksum\"z\n" +
+	"\bchecksum\x18\x04 \x01(\fR\bchecksum\"z\n" +
 	"\x13VerifyChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bis_valid\x18\x02 \x01(\bR\aisValidB\v\n" +

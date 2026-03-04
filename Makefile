@@ -8,7 +8,7 @@ build-client:    # build client binary
 build-all:       # all three
 test-storage:    # run storage package tests
 test-all:        # all tests
-	go test ./...
+	go test -count=1 ./...
 run-cluster:     # start 1 metadata + 4 storage nodes locally
 demo:            # run demo script
 
