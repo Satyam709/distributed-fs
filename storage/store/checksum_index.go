@@ -106,7 +106,12 @@ func WithDefaultPath[T any]() BoltChecksumIndexOpts[T] {
 // NewChecksumIndexBoltDB constructs a BoltChecksumIndex.
 // codec is required — passing nil will cause Open to return ErrMissingCodec.
 // Call Open before using Put or Get.
-func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts[T]) *BoltChecksumIndex[T] {
+func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts[T]) (*BoltChecksumIndex[T], error) {
+
+	if codec == nil {
+		return nil, errors.New("ChecksumIndexBoltDB: codec is required")
+	}
+
 	boltStore := &BoltChecksumIndex[T]{
 		logger: logging.NewCLogger(),
 		bucket: "checksums",
@@ -120,7 +125,7 @@ func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts
 	for _, opt := range opts {
 		opt(boltStore)
 	}
-	return boltStore
+	return boltStore, nil
 }
 
 // Open opens (or creates) the bbolt database file and ensures the bucket

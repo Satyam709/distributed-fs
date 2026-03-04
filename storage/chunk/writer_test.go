@@ -22,9 +22,10 @@ func newTestStore(t *testing.T) store.Store {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
+	cs, err := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
 		store.WithDbPath[[32]byte](dir),
 	)
+	require.NoError(t, err)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
 

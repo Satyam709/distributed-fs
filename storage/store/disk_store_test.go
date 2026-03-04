@@ -20,9 +20,11 @@ func newTestDiskStore(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
+	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
 		WithDbPath[[32]byte](dir),
 	)
+	require.NoError(t, err)
+
 	require.NoError(t, cs.Open(), "checksum store Open() failed")
 	t.Cleanup(cs.CleanUp)
 
@@ -53,7 +55,8 @@ func makeChunk(size int, fill byte) []byte {
 // ---------------------------------------------------------------------------
 
 func TestNewDiskStore_Defaults(t *testing.T) {
-	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	require.NoError(t, err)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
 
@@ -65,7 +68,8 @@ func TestNewDiskStore_Defaults(t *testing.T) {
 }
 
 func TestNewDiskStore_WithOptions(t *testing.T) {
-	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	require.NoError(t, err)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
 
@@ -659,7 +663,9 @@ func TestChecksumIndex_Delete(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			var s *BoltChecksumIndex[string]
 			if c.setup == nil {
-				s = NewChecksumIndexBoltDB[string](StringCodec{})
+				var err error
+				s, err = NewChecksumIndexBoltDB[string](StringCodec{})
+				require.NoError(t, err)
 			} else {
 				s = newOpenedStore(t)
 				c.setup(s)
@@ -699,9 +705,10 @@ func TestChecksumIndex_Delete_KeyGoneFromGetAll(t *testing.T) {
 func newTestDiskStoreWithTemp(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
-	cs := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
+	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
 		WithDbPath[[32]byte](dir),
 	)
+	require.NoError(t, err)
 	require.NoError(t, cs.Open(), "checksum store Open() failed")
 	t.Cleanup(cs.CleanUp)
 	ds, err := NewDiskStore(
