@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -25,7 +26,7 @@ type DiskStore struct {
 	// to avoid filesystem performance issues with too many files in a single directory
 	splitLevel uint16
 
-	checksumStore ChecksumIndexStore[[32]byte]
+	checksumStore ChecksumIndexStore[[]byte]
 
 	// stores totalspace in bytes
 	// def = 4Gib => 4 * (2^30) bytes
@@ -89,7 +90,7 @@ func WithTotalSpace(bytes uint64) DiskStoreOptions {
 }
 
 // WithChecksumStore injects the checksum index implementation.
-func WithChecksumStore(cs ChecksumIndexStore[[32]byte]) DiskStoreOptions {
+func WithChecksumStore(cs ChecksumIndexStore[[]byte]) DiskStoreOptions {
 	return func(ds *DiskStore) {
 		ds.checksumStore = cs
 	}
@@ -263,7 +264,7 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 
 	// Calculate and store checksum
 	checksum := sha256.Sum256(value)
-	if err := ds.checksumStore.Put(chunkId, checksum); err != nil {
+	if err := ds.checksumStore.Put(chunkId, checksum[:]); err != nil {
 		ds.logger.Error("Write: checksum put failed", err, slog.String("chunkId", chunkId))
 		return err
 	}
@@ -342,7 +343,7 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 		return err
 	}
 	checksum := sha256.Sum256(data)
-	if err := ds.checksumStore.Put(chunkId, checksum); err != nil {
+	if err := ds.checksumStore.Put(chunkId, checksum[:]); err != nil {
 		ds.logger.Error("Rename: checksum put failed", err, slog.String("chunkId", chunkId))
 		return err
 	}
@@ -396,7 +397,7 @@ func (ds *DiskStore) Verify(chunkId string) error {
 	}
 	calculatedHash := sha256.Sum256(data)
 
-	if calculatedHash != val {
+	if !bytes.Equal(calculatedHash[:], val) {
 		ds.logger.Error("Verify: checksum mismatch", dfserrors.ErrVerifyFailed,
 			slog.String("chunkId", chunkId))
 		return VerifyFailed

@@ -32,8 +32,8 @@ func main() {
 
 	// ── Checksum Index (BoltDB) ──────────────────────────────────────────────
 	logger.Info("opening checksum index (BoltDB)")
-	boltDb, err := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
-		store.WithDbPath[[32]byte](rootDataDir))
+	boltDb, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
+		store.WithDbPath[[]byte](rootDataDir))
 
 	if err != nil {
 		logger.FatalError("failed to init checksum-store", err)

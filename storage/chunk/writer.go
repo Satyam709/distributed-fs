@@ -1,6 +1,7 @@
 package chunk
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -15,8 +16,8 @@ import (
 
 // Package-level aliases so existing call-sites (tests, server) keep compiling.
 var (
-	OperationAborted    = dfserrors.ErrInvalidChunkId // legacy; use internal errors
-	WriterClosed        = dfserrors.ErrChecksumMismatch
+	OperationAborted    = errors.New("op has been aborted")
+	WriterClosed        = errors.New("write over a closed writer")
 	ErrChecksumMismatch = dfserrors.ErrChecksumMismatch
 )
 
@@ -68,7 +69,7 @@ func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
 func (cw *ChunkWriter) Write(data []byte) error {
 	if cw.isDone {
 		cw.logger.Debug("Write called on closed writer")
-		return dfserrors.ErrChecksumMismatch // writer is sealed
+		return WriterClosed
 	}
 
 	n, err := cw.file.Write(data)
@@ -93,17 +94,18 @@ func (cw *ChunkWriter) Write(data []byte) error {
 
 // Finalize verifies the checksum and atomically commits the chunk to the store.
 // Called on the last frame.
-func (cw *ChunkWriter) Finalize(expectedChecksum string) (err error) {
-	cw.logger.Info("Finalize: verifying checksum",
-		slog.Int64("totalBytes", cw.written),
-		slog.String("expected", expectedChecksum),
-	)
+// Calls Aborts if any arror
+func (cw *ChunkWriter) Finalize(expectedChecksum []byte) (err error) {
+	if cw.isDone {
+		return OperationAborted
+	}
 
-	computed := hex.EncodeToString(cw.hasher.Sum(nil))
-	if computed != expectedChecksum {
+	computed := cw.hasher.Sum(nil)
+
+	if !bytes.Equal(computed, expectedChecksum) {
 		cw.logger.Error("Finalize: checksum mismatch", dfserrors.ErrChecksumMismatch,
-			slog.String("computed", computed),
-			slog.String("expected", expectedChecksum),
+			slog.String("computed", hex.EncodeToString(computed)),
+			slog.String("expected", hex.EncodeToString(expectedChecksum)),
 		)
 		cw.Abort()
 		return dfserrors.ErrChecksumMismatch
@@ -121,10 +123,6 @@ func (cw *ChunkWriter) Finalize(expectedChecksum string) (err error) {
 	_ = cw.file.Close()
 	cw.isDone = true
 
-	// Atomic rename into final location.
-	// store.Rename(source, chunkId) — it derives the shard path itself via
-	// PathForChunk. Do NOT pass the pre-computed shard path here or the file
-	// will end up double-sharded at an unresolvable path.
 	err = cw.store.Rename(cw.filepath, cw.chunkId)
 	if err != nil {
 		return

@@ -2,7 +2,7 @@ package store
 
 type Store interface {
 	Write(string, []byte) error
-	Rename(string, string) error
+	Rename(sourcePath string, chunkId string) error
 	Read(string) ([]byte, error)
 	Delete(string) error
 	Exists(string) bool

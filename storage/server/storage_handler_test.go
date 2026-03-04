@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"net"
 	"testing"
 
@@ -31,8 +30,8 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 
 	dir := t.TempDir()
 
-	cs, err := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
-		store.WithDbPath[[32]byte](dir),
+	cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
+		store.WithDbPath[[]byte](dir),
 	)
 	require.NoError(t, err)
 	require.NoError(t, cs.Open())
@@ -70,30 +69,23 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 }
 
 // buildFrames splits payload into data frames of at most frameSize bytes,
-// then appends one final empty sentinel frame (IsLast=true) carrying the
-// whole-payload SHA-256 checksum. This matches the server's protocol: the
-// IsLast frame is a pure end-of-stream signal and carries no payload data.
 func buildFrames(chunkId string, payload []byte, frameSize int) []*pb_storage.PutChunkRequest {
-	h := sha256.Sum256(payload)
-	cs := hex.EncodeToString(h[:])
+	cs := sha256.New()
 
 	var frames []*pb_storage.PutChunkRequest
 	for start := 0; start < len(payload); start += frameSize {
-		end := start + frameSize
-		if end > len(payload) {
-			end = len(payload)
-		}
+		end := min(start+frameSize, len(payload))
+
+		data := payload[start:end]
+		cs.Write(data)
+
 		frames = append(frames, &pb_storage.PutChunkRequest{
-			ChunkId: chunkId,
-			Data:    payload[start:end],
+			ChunkId:  chunkId,
+			Data:     data,
+			IsLast:   end == len(payload),
+			Checksum: cs.Sum(nil),
 		})
 	}
-	// Terminal sentinel — no data, signals end-of-stream.
-	frames = append(frames, &pb_storage.PutChunkRequest{
-		ChunkId:  chunkId,
-		IsLast:   true,
-		Checksum: []byte(cs),
-	})
 	return frames
 }
 
@@ -153,20 +145,14 @@ func TestPutChunk_SingleFrameIsLast(t *testing.T) {
 	assert.Equal(t, payload, got)
 }
 
-// TestPutChunk_EmptyStream checks that a stream that signals IsLast without
-// ever sending data returns InvalidArgument because no writer was created.
+// TestPutChunk_EmptyStream checks that a empty streams return error
 func TestPutChunk_EmptyStream(t *testing.T) {
 	client, _ := newTestServer(t)
 
 	stream, err := client.PutChunk(context.Background())
 	require.NoError(t, err)
 
-	// Send a single frame with IsLast=true but no data and no prior frames.
-	require.NoError(t, stream.Send(&pb_storage.PutChunkRequest{
-		ChunkId:  serverTestChunkId,
-		IsLast:   true,
-		Checksum: []byte(hex.EncodeToString(sha256.New().Sum(nil))),
-	}))
+	// havnt sent anything lets close it
 
 	_, rpcErr := stream.CloseAndRecv()
 	require.Error(t, rpcErr)
@@ -194,7 +180,7 @@ func TestPutChunk_ResponseContainsChecksum(t *testing.T) {
 
 	payload := []byte("checksum echo test")
 	h := sha256.Sum256(payload)
-	expectedCS := hex.EncodeToString(h[:])
+	expectedCS := h[:]
 
 	frames := buildFrames(serverTestChunkId, payload, len(payload))
 	resp, err := send(t, client, frames)

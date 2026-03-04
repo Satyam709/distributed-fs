@@ -2,7 +2,6 @@ package chunk
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,8 +21,8 @@ func newTestStore(t *testing.T) store.Store {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs, err := store.NewChecksumIndexBoltDB[[32]byte](store.Sha256Codec{},
-		store.WithDbPath[[32]byte](dir),
+	cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
+		store.WithDbPath[[]byte](dir),
 	)
 	require.NoError(t, err)
 	require.NoError(t, cs.Open())
@@ -38,12 +37,6 @@ func newTestStore(t *testing.T) store.Store {
 	)
 	require.NoError(t, err)
 	return ds
-}
-
-// checksum returns the hex-encoded SHA-256 of data — what ChunkWriter computes.
-func checksum(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
 }
 
 // validChunkId must be ≥ 4 bytes for splitLevel=2.
@@ -61,14 +54,14 @@ func TestChunkWriter_HappyPath(t *testing.T) {
 	frame1 := []byte("hello, ")
 	frame2 := []byte("world!")
 	payload := append(frame1, frame2...)
-	expectedCS := checksum(payload)
+	expectedCS := sha256.Sum256(payload)
 
 	w, err := NewChunkWriter(testChunkId, s)
 	require.NoError(t, err)
 
 	require.NoError(t, w.Write(frame1))
 	require.NoError(t, w.Write(frame2))
-	require.NoError(t, w.Finalize(expectedCS))
+	require.NoError(t, w.Finalize(expectedCS[:]))
 
 	// Chunk must be readable and bit-for-bit identical.
 	got, err := s.Read(testChunkId)
@@ -86,9 +79,11 @@ func TestChunkWriter_ChecksumMismatch(t *testing.T) {
 
 	require.NoError(t, w.Write([]byte("data")))
 
-	tempPath := w.filepath // capture before Finalize wipes it
+	tempPath := w.filepath
 
-	err = w.Finalize("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // wrong 64-char hex
+	wrongCs := make([]byte, 0)
+
+	err = w.Finalize(wrongCs)
 	assert.ErrorIs(t, err, dfserrors.ErrChecksumMismatch)
 
 	// Temp file must be gone after abort.
@@ -127,7 +122,8 @@ func TestChunkWriter_WriteAfterFinalize(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, w.Write(payload))
-	require.NoError(t, w.Finalize(checksum(payload)))
+	cs := sha256.Sum256(payload)
+	require.NoError(t, w.Finalize(cs[:]))
 
 	// Subsequent Write must be rejected.
 	writeErr := w.Write([]byte("extra"))
@@ -143,7 +139,8 @@ func TestChunkWriter_EmptyPayload(t *testing.T) {
 	require.NoError(t, err)
 
 	// No Write calls — finalize immediately with the empty-payload checksum.
-	require.NoError(t, w.Finalize(checksum([]byte{})))
+	cs := sha256.Sum256([]byte{})
+	require.NoError(t, w.Finalize(cs[:]))
 
 	got, err := s.Read(testChunkId)
 	require.NoError(t, err)
@@ -186,7 +183,7 @@ func TestChunkWriter_WriteAfterAbort(t *testing.T) {
 	require.NoError(t, err)
 	w.Abort()
 	err = w.Write([]byte("should be rejected"))
-	assert.ErrorIs(t, err, ErrChecksumMismatch, "Write after Abort must be rejected")
+	assert.ErrorIs(t, err, WriterClosed, "Write after Abort must be rejected")
 }
 
 // TestChunkWriter_FinalizeAfterAbort verifies that Finalize after Abort
@@ -194,11 +191,16 @@ func TestChunkWriter_WriteAfterAbort(t *testing.T) {
 func TestChunkWriter_FinalizeAfterAbort(t *testing.T) {
 	s := newTestStore(t)
 	payload := []byte("abort then finalize")
+
 	w, err := NewChunkWriter(testChunkId, s)
+
 	require.NoError(t, err)
 	require.NoError(t, w.Write(payload))
+
 	w.Abort()
-	_ = w.Finalize(checksum(payload)) // error expected; chunk must not be committed
+	cs := sha256.Sum256(payload)
+	err = w.Finalize(cs[:])
+	assert.ErrorIs(t, err, OperationAborted)
 	assert.False(t, s.Exists(testChunkId), "chunk must not be committed after Abort+Finalize")
 }
 
@@ -207,10 +209,13 @@ func TestChunkWriter_FinalizeAfterAbort(t *testing.T) {
 func TestChunkWriter_LargePayload_MultipleFrames(t *testing.T) {
 	const frameSize = 512
 	const numFrames = 20
+
 	s := newTestStore(t)
 	w, err := NewChunkWriter(testChunkId, s)
+
 	require.NoError(t, err)
 	var full []byte
+
 	for i := range numFrames {
 		frame := make([]byte, frameSize)
 		for j := range frame {
@@ -219,8 +224,11 @@ func TestChunkWriter_LargePayload_MultipleFrames(t *testing.T) {
 		full = append(full, frame...)
 		require.NoError(t, w.Write(frame))
 	}
-	require.NoError(t, w.Finalize(checksum(full)))
+	cs := sha256.Sum256(full)
+	require.NoError(t, w.Finalize(cs[:]))
+
 	got, err := s.Read(testChunkId)
+
 	require.NoError(t, err)
 	assert.Equal(t, full, got)
 }

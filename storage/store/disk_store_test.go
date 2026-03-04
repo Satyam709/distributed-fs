@@ -20,8 +20,8 @@ func newTestDiskStore(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
 
-	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
-		WithDbPath[[32]byte](dir),
+	cs, err := NewChecksumIndexBoltDB[[]byte](ByteCodec{},
+		WithDbPath[[]byte](dir),
 	)
 	require.NoError(t, err)
 
@@ -55,7 +55,7 @@ func makeChunk(size int, fill byte) []byte {
 // ---------------------------------------------------------------------------
 
 func TestNewDiskStore_Defaults(t *testing.T) {
-	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	cs, err := NewChecksumIndexBoltDB[[]byte](ByteCodec{}, WithDbPath[[]byte](t.TempDir()))
 	require.NoError(t, err)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
@@ -68,7 +68,7 @@ func TestNewDiskStore_Defaults(t *testing.T) {
 }
 
 func TestNewDiskStore_WithOptions(t *testing.T) {
-	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{}, WithDbPath[[32]byte](t.TempDir()))
+	cs, err := NewChecksumIndexBoltDB[[]byte](ByteCodec{}, WithDbPath[[]byte](t.TempDir()))
 	require.NoError(t, err)
 	require.NoError(t, cs.Open())
 	t.Cleanup(cs.CleanUp)
@@ -705,8 +705,8 @@ func TestChecksumIndex_Delete_KeyGoneFromGetAll(t *testing.T) {
 func newTestDiskStoreWithTemp(t *testing.T, totalSpace uint64) *DiskStore {
 	t.Helper()
 	dir := t.TempDir()
-	cs, err := NewChecksumIndexBoltDB[[32]byte](Sha256Codec{},
-		WithDbPath[[32]byte](dir),
+	cs, err := NewChecksumIndexBoltDB[[]byte](ByteCodec{},
+		WithDbPath[[]byte](dir),
 	)
 	require.NoError(t, err)
 	require.NoError(t, cs.Open(), "checksum store Open() failed")
