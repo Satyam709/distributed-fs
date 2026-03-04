@@ -130,6 +130,27 @@ func TestPutChunk_HappyPath(t *testing.T) {
 	assert.Equal(t, payload, got)
 }
 
+func TestPutChunk_ChunkIdChangedMidStream(t *testing.T) {
+	client, ds := newTestServer(t)
+
+	payload := make([]byte, 3*1024) // 3 KiB
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
+
+	frames := buildFrames(serverTestChunkId, payload, 1024) // 3 frames of 1 KiB each
+
+	// change the id
+	frames[1].ChunkId = "mismatch"
+
+	resp, err := send(t, client, frames)
+	assert.Error(t, err)
+	assert.Nil(t, resp)
+	// Chunk must be persisted and bit-for-bit correct.
+	_, readErr := ds.Read(serverTestChunkId)
+	assert.Error(t, readErr)
+}
+
 // TestPutChunk_SingleFrameIsLast exercises the single-frame path
 // (first frame also has IsLast=true).
 func TestPutChunk_SingleFrameIsLast(t *testing.T) {

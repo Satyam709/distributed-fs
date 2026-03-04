@@ -41,6 +41,7 @@ func NewStorageServer(s store.Store, logger *logging.CLogger) (*StorageServer, e
 // atomically commits the chunk once all frames have been received.
 func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.PutChunkRequest, pb_storage.PutChunkResponse]) error {
 	var writer *chunk.ChunkWriter
+	var registeredChunkId string
 
 	s.logger.Info("PutChunk: stream opened")
 	var lastFrame *pb_storage.PutChunkRequest
@@ -102,6 +103,16 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 					slog.String("chunkId", data.ChunkId))
 				return status.Error(codes.Internal, "failed to initialise chunk writer")
 			}
+		}
+
+		if registeredChunkId == "" {
+			registeredChunkId = data.ChunkId
+		}
+
+		// make sure all frames req have the sameChunkId
+		if registeredChunkId != data.ChunkId {
+			writer.Abort()
+			return status.Error(codes.InvalidArgument, "chunk-id mismatch")
 		}
 
 		// Write this frame's payload.
