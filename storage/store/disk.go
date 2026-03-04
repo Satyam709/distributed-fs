@@ -427,7 +427,10 @@ func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
 
 // FreeSpace returns the available space on disk
 func (ds *DiskStore) FreeSpace() (uint64, error) {
-	return max(ds.totalSpace-ds.usedSpace, 0), nil
+	if ds.usedSpace > ds.totalSpace {
+		return 0, nil
+	}
+	return ds.totalSpace - ds.usedSpace, nil
 }
 
 // Size returns the total size used by the store
