@@ -157,7 +157,9 @@ func TestChunkWriter_TempFileLocation(t *testing.T) {
 	defer w.Abort()
 
 	// TempDir for this chunk lives directly under the store tmp dir.
-	expectedDir := filepath.Dir(s.TempDir(testChunkId))
+	tmpPath, err := s.TempDir(testChunkId)
+	require.NoError(t, err)
+	expectedDir := filepath.Dir(tmpPath)
 	actualDir := filepath.Dir(w.filepath)
 	assert.Equal(t, expectedDir, actualDir, "temp file should live in the store's temp directory")
 }

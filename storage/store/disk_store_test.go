@@ -1,9 +1,11 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -167,6 +169,11 @@ func TestWrite_DuplicateOverwrites(t *testing.T) {
 	got, err := ds.Read(minChunkId)
 	require.NoError(t, err)
 	assert.Equal(t, second, got, "second write should overwrite first")
+
+	// usedSpace must not be doubled — only the live file size should count.
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(len(second)), size, "usedSpace must not be doubled on overwrite")
 }
 
 func TestWrite_UpdatesUsedSpace(t *testing.T) {
@@ -730,7 +737,8 @@ func newTestDiskStoreWithTemp(t *testing.T, totalSpace uint64) *DiskStore {
 // that includes the chunkId.
 func TestTempDir_PathFormat(t *testing.T) {
 	ds := newTestDiskStoreWithTemp(t, 1<<20)
-	path := ds.TempDir(minChunkId)
+	path, err := ds.TempDir(minChunkId)
+	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(filepath.Clean(path), filepath.Clean(ds.tempDir)),
 		"TempDir path %q should be under ds.tempDir %q", path, ds.tempDir)
 	assert.Contains(t, path, minChunkId)
@@ -740,8 +748,10 @@ func TestTempDir_PathFormat(t *testing.T) {
 // produce distinct temp paths (concurrent writes must not collide).
 func TestTempDir_DifferentChunksGetDifferentPaths(t *testing.T) {
 	ds := newTestDiskStoreWithTemp(t, 1<<20)
-	p1 := ds.TempDir("aabbccddeeff")
-	p2 := ds.TempDir("bbccddeeff00")
+	p1, err := ds.TempDir("aabbccddeeff")
+	require.NoError(t, err)
+	p2, err := ds.TempDir("bbccddeeff00")
+	require.NoError(t, err)
 	assert.NotEqual(t, p1, p2)
 }
 
@@ -768,10 +778,6 @@ func TestPathForChunk_TooShortChunkId_ReturnsError(t *testing.T) {
 	_, err := ds.PathForChunk("ab") // needs ≥ 4 chars for splitLevel=2
 	assert.ErrorIs(t, err, InvalidChunkId)
 }
-
-// ---------------------------------------------------------------------------
-// Rename — additional scenarios
-// ---------------------------------------------------------------------------
 
 // TestRename_ChunkAvailableForRead ensures a Rename-committed chunk reads back
 // with the original bytes.
@@ -804,10 +810,6 @@ func TestRename_SourceGoneAfterRename(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "source temp file should be gone after Rename")
 }
 
-// ---------------------------------------------------------------------------
-// usedSpace underflow guard
-// ---------------------------------------------------------------------------
-
 // TestDelete_UsedSpaceDoesNotUnderflow checks the clamp in Delete: if
 // usedSpace is already 0 when a file is deleted, it must stay 0, not wrap.
 func TestDelete_UsedSpaceDoesNotUnderflow(t *testing.T) {
@@ -818,4 +820,262 @@ func TestDelete_UsedSpaceDoesNotUnderflow(t *testing.T) {
 	size, err := ds.Size()
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0), size, "usedSpace must clamp to 0, not underflow")
+}
+
+// TestWrite_OverwriteAccountsDelta writes a large chunk then overwrites with a
+// smaller one and confirms usedSpace tracks the *net* size, not an accumulated sum.
+func TestWrite_OverwriteAccountsDelta(t *testing.T) {
+	ds := newTestDiskStore(t, 1024*1024)
+
+	// First write: 256 bytes.
+	require.NoError(t, ds.Write(minChunkId, makeChunk(256, 'a')))
+	size, _ := ds.Size()
+	assert.Equal(t, uint64(256), size)
+
+	// Overwrite with 128 bytes — usedSpace should shrink, NOT grow to 384.
+	require.NoError(t, ds.Write(minChunkId, makeChunk(128, 'b')))
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(128), size, "usedSpace should equal newSize after shrinking overwrite")
+
+	// Overwrite with a larger chunk — usedSpace should grow to 512.
+	require.NoError(t, ds.Write(minChunkId, makeChunk(512, 'c')))
+	size, err = ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(512), size, "usedSpace should equal newSize after growing overwrite")
+}
+
+// TestWrite_Overwrite_InsufficientSpace ensures that even for an overwrite, the
+// *net* increase is checked: if the new data is larger than old + freeSpace,
+// we must get InsufficientSpace.
+func TestWrite_Overwrite_InsufficientSpace(t *testing.T) {
+	// Total space = 200 bytes.
+	ds := newTestDiskStore(t, 200)
+
+	// Write 100 bytes → 100 bytes free.
+	require.NoError(t, ds.Write(minChunkId, makeChunk(100, 'a')))
+
+	// Attempt to overwrite with 201 bytes: net delta = 101 > 100 free.
+	err := ds.Write(minChunkId, makeChunk(201, 'b'))
+	assert.ErrorIs(t, err, InsufficientSpace)
+
+	// Overwrite with 150 bytes: net delta = 50 ≤ 100 free — should succeed.
+	require.NoError(t, ds.Write(minChunkId, makeChunk(150, 'c')))
+}
+
+// TestRename_OverwriteAccountsDelta commits a chunk via Rename, then re-renames
+// into the same chunkId with a different size and verifies usedSpace is the
+// size of the *current* file, not an accumulated sum.
+func TestRename_OverwriteAccountsDelta(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1<<20)
+
+	// Helper: write payload to a temp file and return its path.
+	writeTmp := func(data []byte) string {
+		tmp, err := os.CreateTemp(ds.tempDir, "*.tmp")
+		require.NoError(t, err)
+		_, err = tmp.Write(data)
+		require.NoError(t, err)
+		require.NoError(t, tmp.Close())
+		return tmp.Name()
+	}
+
+	// First Rename: 256 bytes.
+	require.NoError(t, ds.Rename(writeTmp(makeChunk(256, 'a')), minChunkId))
+	size, _ := ds.Size()
+	assert.Equal(t, uint64(256), size)
+
+	// Second Rename (overwrite) with 128 bytes — usedSpace must NOT be 384.
+	require.NoError(t, ds.Rename(writeTmp(makeChunk(128, 'b')), minChunkId))
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(128), size, "usedSpace should equal new file size after shrinking Rename overwrite")
+
+	// Third Rename (overwrite) with 512 bytes.
+	require.NoError(t, ds.Rename(writeTmp(makeChunk(512, 'c')), minChunkId))
+	size, err = ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(512), size, "usedSpace should equal new file size after growing Rename overwrite")
+}
+
+// TestRename_InsufficientSpace checks that Rename returns InsufficientSpace
+// when the net increase would exceed totalSpace.
+func TestRename_InsufficientSpace(t *testing.T) {
+	// Total = 200 bytes. Write a 100-byte chunk.
+	ds := newTestDiskStoreWithTemp(t, 200)
+	require.NoError(t, ds.Write(minChunkId, makeChunk(100, 'a')))
+
+	// Now try to Rename a 201-byte file into the same chunkId.
+	// net delta = 201 - 100 = 101 > 100 free.
+	tmp, err := os.CreateTemp(ds.tempDir, "*.tmp")
+	require.NoError(t, err)
+	_, err = tmp.Write(makeChunk(201, 'z'))
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+
+	err = ds.Rename(tmp.Name(), minChunkId)
+	// Temp file cleanup: it may or may not exist depending on when the check fires.
+	_ = os.Remove(tmp.Name())
+
+	assert.ErrorIs(t, err, InsufficientSpace)
+}
+
+// TestChunkId_PathTraversal_Write ensures Write rejects chunkIds that contain
+// path separators or ".." dot-segments.
+func TestChunkId_PathTraversal_Write(t *testing.T) {
+	ds := newTestDiskStore(t, 1024*1024)
+
+	traversalIds := []string{
+		"../evil",
+		"../../etc/passwd",
+		"abcd/efgh",
+		"abcd\\efgh",
+		"ab..cd1234",
+	}
+
+	for _, id := range traversalIds {
+		t.Run(id, func(t *testing.T) {
+			err := ds.Write(id, []byte("payload"))
+			assert.ErrorIs(t, err, InvalidChunkId, "chunkId %q should be rejected as invalid", id)
+		})
+	}
+}
+
+// TestChunkId_PathTraversal_Rename ensures Rename rejects traversal chunkIds.
+func TestChunkId_PathTraversal_Rename(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1024*1024)
+
+	tmp, err := os.CreateTemp(ds.tempDir, "*.tmp")
+	require.NoError(t, err)
+	_, err = tmp.Write([]byte("data"))
+	require.NoError(t, err)
+	require.NoError(t, tmp.Close())
+
+	traversalIds := []string{
+		"../evil",
+		"abcd/efgh",
+		"ab..cd1234",
+	}
+
+	for _, id := range traversalIds {
+		t.Run(id, func(t *testing.T) {
+			// Re-create the temp file for each iteration since Rename may move it.
+			tmp2, err := os.CreateTemp(ds.tempDir, "*.tmp")
+			require.NoError(t, err)
+			_, err = tmp2.Write([]byte("data"))
+			require.NoError(t, err)
+			require.NoError(t, tmp2.Close())
+
+			err = ds.Rename(tmp2.Name(), id)
+			_ = os.Remove(tmp2.Name()) // cleanup if not moved
+			assert.ErrorIs(t, err, InvalidChunkId, "chunkId %q should be rejected as invalid", id)
+		})
+	}
+}
+
+// TestChunkId_PathTraversal_Read ensures Read returns ChunkNotFound (not a path
+// escape) when given a traversal chunkId.
+func TestChunkId_PathTraversal_Read(t *testing.T) {
+	ds := newTestDiskStore(t, 1024*1024)
+
+	traversalIds := []string{
+		"../somefile",
+		"ab/cdef1234",
+	}
+
+	for _, id := range traversalIds {
+		t.Run(id, func(t *testing.T) {
+			data, err := ds.Read(id)
+			assert.Nil(t, data)
+			assert.ErrorIs(t, err, ChunkNotFound,
+				"Read with traversal chunkId should return ChunkNotFound, got: %v", err)
+		})
+	}
+}
+
+// TestChunkId_PathTraversal_TempDir ensures TempDir returns an error instead
+// of constructing an escaped path.
+func TestChunkId_PathTraversal_TempDir(t *testing.T) {
+	ds := newTestDiskStoreWithTemp(t, 1024*1024)
+
+	traversalIds := []string{
+		"../evil",
+		"ab/cdef1234",
+		"ab..cd5678",
+	}
+
+	for _, id := range traversalIds {
+		t.Run(id, func(t *testing.T) {
+			path, err := ds.TempDir(id)
+			assert.Empty(t, path)
+			assert.ErrorIs(t, err, InvalidChunkId,
+				"TempDir with traversal chunkId should return InvalidChunkId")
+		})
+	}
+}
+
+// TestConcurrent_Write_UsedSpace runs N goroutines each writing a unique chunk
+// concurrently. Run with -race to detect data races. After all writes the
+// total usedSpace must equal N * chunkSize.
+func TestConcurrent_Write_UsedSpace(t *testing.T) {
+	const n = 50
+	const chunkSize = 256
+	// totalSpace must accommodate all concurrent writes.
+	ds := newTestDiskStore(t, n*chunkSize*2)
+
+	ids := make([]string, n)
+	for i := range ids {
+		// Each id must be unique and ≥ 4 chars for splitLevel=2.
+		ids[i] = strings.ToLower(makeHexId(i))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(idx int) {
+			defer wg.Done()
+			err := ds.Write(ids[idx], makeChunk(chunkSize, byte(idx)))
+			assert.NoError(t, err)
+		}(i)
+	}
+	wg.Wait()
+
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(n*chunkSize), size,
+		"usedSpace must equal n*chunkSize after concurrent writes")
+}
+
+// TestConcurrent_Delete_UsedSpace writes N chunks sequentially then deletes
+// them all concurrently. Final usedSpace must be 0.
+func TestConcurrent_Delete_UsedSpace(t *testing.T) {
+	const n = 50
+	const chunkSize = 256
+	ds := newTestDiskStore(t, n*chunkSize*2)
+
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = strings.ToLower(makeHexId(i))
+		require.NoError(t, ds.Write(ids[i], makeChunk(chunkSize, byte(i))))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(idx int) {
+			defer wg.Done()
+			err := ds.Delete(ids[idx])
+			assert.NoError(t, err)
+		}(i)
+	}
+	wg.Wait()
+
+	size, err := ds.Size()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), size, "usedSpace must be 0 after concurrent deletes")
+}
+
+// makeHexId produces a deterministic, lowercase hex-like chunk id from an
+// integer that is long enough for the default splitLevel=2 (≥4 chars).
+func makeHexId(n int) string {
+	return fmt.Sprintf("chunk%08x", n)
 }

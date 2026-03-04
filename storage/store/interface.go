@@ -6,7 +6,7 @@ type Store interface {
 	Read(string) ([]byte, error)
 	Delete(string) error
 	Exists(string) bool
-	TempDir(string) string
+	TempDir(string) (string, error)
 	Verify(string) error
 	List() ([]string, error)
 	FreeSpace() (uint64, error)

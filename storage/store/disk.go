@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	dfserrors "github.com/satyam709/distributed-fs/internal/errors"
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -32,6 +33,10 @@ type DiskStore struct {
 	// def = 4Gib => 4 * (2^30) bytes
 	totalSpace uint64
 
+	// mu guards usedSpace and all multi-step operations that read-then-modify it.
+	// Write lock: Write, Rename, Delete (they mutate usedSpace).
+	// Read lock:  FreeSpace, Size.
+	mu        sync.RWMutex
 	usedSpace uint64
 
 	logger *logging.CLogger
@@ -148,15 +153,38 @@ func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
 	return ds, nil
 }
 
+// validateChunkId rejects chunk identifiers that are:
+//   - empty
+//   - shorter than 2*splitLevel (needed for shard path construction)
+//   - containing path-separator characters ('/', '\') or the ".." sequence
+//
+// Any of these conditions returns InvalidChunkId.
+func (ds *DiskStore) validateChunkId(chunkId string) error {
+	if chunkId == "" {
+		return InvalidChunkId
+	}
+	if len(chunkId) < int(2*ds.splitLevel) {
+		return InvalidChunkId
+	}
+	// Guard against path traversal: reject any '/', '\', or ".." segment.
+	if strings.ContainsAny(chunkId, "/\\") || strings.Contains(chunkId, "..") {
+		return InvalidChunkId
+	}
+	return nil
+}
+
 // Delete removes a chunk from the disk store.
 // It removes the on-disk file, deletes the checksum index entry, and
 // decrements usedSpace. Returns ChunkNotFound if the chunk does not exist.
 func (ds *DiskStore) Delete(chunkId string) error {
 	ds.logger.Debug("Delete", slog.String("chunkId", chunkId))
 
-	if chunkId == "" {
-		return InvalidChunkId
+	if err := ds.validateChunkId(chunkId); err != nil {
+		return err
 	}
+
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 
 	if !ds.Exists(chunkId) {
 		ds.logger.Debug("Delete: chunk not found", slog.String("chunkId", chunkId))
@@ -223,19 +251,40 @@ func (ds *DiskStore) Exists(chunkId string) bool {
 func (ds *DiskStore) Write(chunkId string, value []byte) error {
 	ds.logger.Debug("Write", slog.String("chunkId", chunkId), slog.Int("bytes", len(value)))
 
-	if chunkId == "" {
-		return InvalidChunkId
-	}
-
-	// Check if we have enough space
-	freeSpace, err := ds.FreeSpace()
-	if err != nil {
+	if err := ds.validateChunkId(chunkId); err != nil {
 		return err
 	}
-	if uint64(len(value)) > freeSpace {
+
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	// Determine the existing file size so we can compute the net delta.
+	// If the chunk already exists we subtract the old size before adding the new.
+	var existingSize uint64
+	if ds.Exists(chunkId) {
+		relPath, err := ds.PathForChunk(chunkId)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(filepath.Join(ds.rootDir, relPath))
+		if err == nil {
+			existingSize = uint64(info.Size())
+		}
+	}
+
+	// Net space required: new bytes minus the bytes that will be freed.
+	newSize := uint64(len(value))
+	var netDelta uint64
+	if newSize > existingSize {
+		netDelta = newSize - existingSize
+	}
+
+	// Check if we have enough space for the *net* increase.
+	freeSpace := ds.totalSpace - ds.usedSpace
+	if netDelta > freeSpace {
 		ds.logger.Error("Write: insufficient space", nil,
 			slog.String("chunkId", chunkId),
-			slog.Uint64("needed", uint64(len(value))),
+			slog.Uint64("netNeeded", netDelta),
 			slog.Uint64("available", freeSpace),
 		)
 		return InsufficientSpace
@@ -269,8 +318,12 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 		return err
 	}
 
-	// Update used space
-	ds.usedSpace += uint64(len(value))
+	// Update used space by the net delta (may be 0 or negative for shrinking overwrites).
+	if newSize >= existingSize {
+		ds.usedSpace += (newSize - existingSize)
+	} else {
+		ds.usedSpace -= (existingSize - newSize)
+	}
 
 	ds.logger.Info("Write: chunk stored",
 		slog.String("chunkId", chunkId),
@@ -292,14 +345,17 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 func (ds *DiskStore) Rename(source, chunkId string) error {
 	ds.logger.Debug("Rename", slog.String("source", source), slog.String("chunkId", chunkId))
 
-	if chunkId == "" {
-		return InvalidChunkId
+	if err := ds.validateChunkId(chunkId); err != nil {
+		return err
 	}
 
 	if _, err := os.Stat(source); err != nil {
 		ds.logger.Error("Rename: source stat failed", err, slog.String("source", source))
 		return err
 	}
+
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 
 	relDest, err := ds.PathForChunk(chunkId)
 	if err != nil {
@@ -310,6 +366,37 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		ds.logger.Error("Rename: failed to create dest dir", err, slog.String("destDir", destDir))
 		return err
+	}
+
+	// Determine existing destination size (for overwrite delta accounting).
+	var existingDestSize uint64
+	if ds.Exists(chunkId) {
+		if info, err := os.Stat(dest); err == nil {
+			existingDestSize = uint64(info.Size())
+		}
+	}
+
+	// Determine incoming source size for the free-space check.
+	srcInfo, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	srcSize := uint64(srcInfo.Size())
+
+	// Net bytes we need: new size minus whatever the old chunk was using.
+	var netDelta uint64
+	if srcSize > existingDestSize {
+		netDelta = srcSize - existingDestSize
+	}
+
+	freeSpace := ds.totalSpace - ds.usedSpace
+	if netDelta > freeSpace {
+		ds.logger.Error("Rename: insufficient space", nil,
+			slog.String("chunkId", chunkId),
+			slog.Uint64("netNeeded", netDelta),
+			slog.Uint64("available", freeSpace),
+		)
+		return InsufficientSpace
 	}
 
 	// fsync the source file before rename for durability.
@@ -337,7 +424,7 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 		_ = dirFd.Close()
 	}
 
-	// Read the newly-placed file to compute its checksum and size.
+	// Read the newly-placed file to compute its checksum.
 	data, err := os.ReadFile(dest)
 	if err != nil {
 		return err
@@ -347,12 +434,18 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 		ds.logger.Error("Rename: checksum put failed", err, slog.String("chunkId", chunkId))
 		return err
 	}
-	ds.usedSpace += uint64(len(data))
+
+	// Adjust usedSpace by the net delta.
+	if srcSize >= existingDestSize {
+		ds.usedSpace += (srcSize - existingDestSize)
+	} else {
+		ds.usedSpace -= (existingDestSize - srcSize)
+	}
 
 	ds.logger.Info("Rename: chunk committed",
 		slog.String("chunkId", chunkId),
 		slog.String("dest", dest),
-		slog.Int("bytes", len(data)),
+		slog.Uint64("bytes", srcSize),
 		slog.Uint64("usedSpaceBytes", ds.usedSpace),
 	)
 	return nil
@@ -361,6 +454,10 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 // Read retrieves a value from the disk store
 func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
 	ds.logger.Debug("Read", slog.String("chunkId", chunkId))
+
+	if err := ds.validateChunkId(chunkId); err != nil {
+		return nil, ChunkNotFound
+	}
 
 	if !ds.Exists(chunkId) {
 		return nil, ChunkNotFound
@@ -407,9 +504,13 @@ func (ds *DiskStore) Verify(chunkId string) error {
 	return nil
 }
 
-// TempDir returns the filepath for tempStoring of chunk
-func (ds *DiskStore) TempDir(chunkId string) string {
-	return filepath.Join(ds.tempDir, fmt.Sprintf("%s.%s", chunkId, ".tmp"))
+// TempDir returns the filepath for tempStoring of chunk.
+// Returns InvalidChunkId if chunkId fails validation.
+func (ds *DiskStore) TempDir(chunkId string) (string, error) {
+	if err := ds.validateChunkId(chunkId); err != nil {
+		return "", err
+	}
+	return filepath.Join(ds.tempDir, fmt.Sprintf("%s.%s", chunkId, ".tmp")), nil
 }
 
 // PathForChunk returns the full relative path (from rootDir) for a chunk.
@@ -435,6 +536,8 @@ func (ds *DiskStore) FreeSpace() (uint64, error) {
 
 // Size returns the total size used by the store
 func (ds *DiskStore) Size() (uint64, error) {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
 	return ds.usedSpace, nil
 }
 

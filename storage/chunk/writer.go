@@ -45,10 +45,15 @@ func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
 		slog.String("chunkId", chunkId),
 	)
 
+	tmpPath, err := store.TempDir(chunkId)
+	if err != nil {
+		return nil, err
+	}
+
 	cw := &ChunkWriter{
 		chunkId:  chunkId,
 		store:    store,
-		filepath: store.TempDir(chunkId),
+		filepath: tmpPath,
 		hasher:   sha256.New(),
 		logger:   logger,
 	}
