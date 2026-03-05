@@ -184,7 +184,7 @@ func TestPutChunk_ChecksumMismatch(t *testing.T) {
 	client, _ := newTestServer(t)
 
 	frames := buildFrames(serverTestChunkId, []byte("real data"), 1024)
-	frames[len(frames)-1].Checksum = []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	frames[len(frames)-1].Checksum = []byte("aaaaaaaaaa")
 
 	_, rpcErr := send(t, client, frames)
 	require.Error(t, rpcErr)

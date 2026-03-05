@@ -67,7 +67,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 	for {
 		frame, err := stream.Recv()
 
-		// ── EOF: client closed the send side ────────────────────────────────
+		// EOF: client closed the send side.
 		if err == io.EOF {
 			// No frames were received at all — malformed call.
 			if writer == nil {
@@ -82,7 +82,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 				return status.Error(codes.InvalidArgument, "stream closed before final frame")
 			}
 
-			// ── Finalize: verify cumulative checksum and atomically commit ──
+			// Finalize: verify cumulative checksum and atomically commit.
 			// lastFrame.Checksum is the SHA-256 of the entire chunk content
 			// accumulated across all frames.  ChunkWriter compares it against
 			// its own running hash and renames the .tmp file to .chunk on match.
@@ -107,7 +107,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 			})
 		}
 
-		// ── Transport error ──────────────────────────────────────────────────
+		// Transport error.
 		if err != nil {
 			s.logger.Error("PutChunk: stream recv error", err)
 			if writer != nil {
@@ -116,7 +116,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 			return status.Error(codes.Internal, "stream error")
 		}
 
-		// ── First frame: open a ChunkWriter for this chunk ──────────────────
+		// First frame: open a ChunkWriter for this chunk.
 		// ChunkWriter creates the .tmp file and begins accumulating the
 		// running SHA-256 hash that will be compared against the final checksum.
 		if writer == nil {
@@ -132,7 +132,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 			registeredChunkId = frame.ChunkId
 		}
 
-		// ── chunk_id consistency guard ───────────────────────────────────────
+		// Reject frames that switch chunk_id mid-stream.
 		// All frames in a stream must target the same chunk.  A mismatch
 		// indicates a client bug or a multiplexed stream that we do not support.
 		if registeredChunkId != frame.ChunkId {
@@ -144,7 +144,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 			return status.Error(codes.InvalidArgument, "chunk-id mismatch across frames")
 		}
 
-		// ── Write frame payload to the temp file ────────────────────────────
+		// Write frame payload.
 		s.logger.Debug("PutChunk: writing frame",
 			slog.String("chunkId", frame.ChunkId),
 			slog.Int("frameBytes", len(frame.Data)),

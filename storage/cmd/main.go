@@ -19,7 +19,7 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	// ── Working Directory ────────────────────────────────────────────────────
+	// Resolve working directory.
 	pwd, err := os.Getwd()
 	if err != nil {
 		logger.FatalError("failed to get working directory", err)
@@ -30,7 +30,7 @@ func main() {
 		slog.String("tempDir", filepath.Join(rootDataDir, "tmp")),
 	)
 
-	// ── Checksum Index (BoltDB) ──────────────────────────────────────────────
+	// Open checksum index (BoltDB).
 	logger.Info("opening checksum index (BoltDB)")
 	boltDb, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
 		store.WithDbPath[[]byte](rootDataDir))
@@ -44,7 +44,7 @@ func main() {
 	}
 	logger.Info("checksum index opened")
 
-	// ── Disk Store ───────────────────────────────────────────────────────────
+	// Create disk store.
 	logger.Info("creating disk store")
 	diskStore, err := store.NewDiskStore(
 		store.WithChecksumStore(boltDb),
@@ -57,7 +57,7 @@ func main() {
 	}
 	logger.Info("disk store ready", slog.String("rootDir", rootDataDir))
 
-	// ── Storage Node ─────────────────────────────────────────────────────────
+	// Start storage node.
 	config := storage.StorageNodeConfig{Port: ":4000", Timeout: 120 * time.Second}
 	node, err := storage.NewStorageNode(config, logger, diskStore)
 	if err != nil {
@@ -69,7 +69,7 @@ func main() {
 	}
 	logger.Info("storage node started", slog.String("port", config.Port))
 
-	// ── Graceful Shutdown ────────────────────────────────────────────────────
+	// Wait for shutdown signal and clean up.
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 
