@@ -338,9 +338,8 @@ func TestDelete_RemovesFileFromDisk(t *testing.T) {
 	ds := newTestDiskStore(t, 1024*1024)
 	require.NoError(t, ds.Write(minChunkId, makeChunk(32, 'f')))
 
-	relPath, err := ds.PathForChunk(minChunkId)
+	chunkPath, err := ds.PathForChunk(minChunkId)
 	require.NoError(t, err)
-	chunkPath := filepath.Join(ds.rootDir, relPath)
 
 	_, statErr := os.Stat(chunkPath)
 	require.NoError(t, statErr, "file should exist before delete")
@@ -437,9 +436,8 @@ func TestVerify(t *testing.T) {
 			data := makeChunk(64, 'v')
 			require.NoError(t, ds.Write(minChunkId, data))
 
-			relPath, err := ds.PathForChunk(minChunkId)
+			chunkPath, err := ds.PathForChunk(minChunkId)
 			require.NoError(t, err)
-			chunkPath := filepath.Join(ds.rootDir, relPath)
 
 			c.setup(ds, chunkPath)
 
@@ -759,12 +757,14 @@ func TestTempDir_DifferentChunksGetDifferentPaths(t *testing.T) {
 // PathForChunk
 // ---------------------------------------------------------------------------
 
-// TestPathForChunk_CorrectShardPath checks the shard path for splitLevel=2.
+// TestPathForChunk_CorrectShardPath checks the absolute shard path for splitLevel=2.
 func TestPathForChunk_CorrectShardPath(t *testing.T) {
 	ds := newTestDiskStoreWithTemp(t, 1<<20)
 	got, err := ds.PathForChunk("abcdefgh1234")
 	require.NoError(t, err)
-	assert.Equal(t, "ab/cd/abcdefgh1234.chunk", got)
+	// PathForChunk now returns an absolute path: rootDir + shard dirs + filename.
+	want := filepath.Join(ds.rootDir, "ab", "cd", "abcdefgh1234.chunk")
+	assert.Equal(t, want, got)
 }
 
 func TestPathForChunk_EmptyChunkId_ReturnsError(t *testing.T) {

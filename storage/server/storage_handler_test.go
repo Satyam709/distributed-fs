@@ -24,7 +24,7 @@ const bufSize = 1 << 20 // 1 MiB
 // ---------------------------------------------------------------------------
 
 // newTestServer spins up an in-process gRPC server backed by a real DiskStore
-// in a temp directory. Returns a connected client and a teardown func.
+// in a temp directory. Returns a connected client and the underlying store.
 func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) {
 	t.Helper()
 
@@ -68,17 +68,14 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 	return pb_storage.NewStorageServiceClient(conn), ds
 }
 
-// buildFrames splits payload into data frames of at most frameSize bytes,
+// buildFrames splits payload into data frames of at most frameSize bytes.
 func buildFrames(chunkId string, payload []byte, frameSize int) []*pb_storage.PutChunkRequest {
 	cs := sha256.New()
-
 	var frames []*pb_storage.PutChunkRequest
 	for start := 0; start < len(payload); start += frameSize {
 		end := min(start+frameSize, len(payload))
-
 		data := payload[start:end]
 		cs.Write(data)
-
 		frames = append(frames, &pb_storage.PutChunkRequest{
 			ChunkId:  chunkId,
 			Data:     data,
@@ -100,11 +97,20 @@ func send(t *testing.T, client pb_storage.StorageServiceClient, frames []*pb_sto
 	return stream.CloseAndRecv()
 }
 
+// putChunk uploads a payload in a single frame and asserts success.
+func putChunk(t *testing.T, client pb_storage.StorageServiceClient, chunkId string, payload []byte) {
+	t.Helper()
+	frames := buildFrames(chunkId, payload, len(payload))
+	resp, err := send(t, client, frames)
+	require.NoError(t, err)
+	require.Equal(t, int32(200), resp.Response.Code)
+}
+
 // chunkId valid for splitLevel=2 (≥4 chars).
 const serverTestChunkId = "deadbeef0123456789ab"
 
 // ---------------------------------------------------------------------------
-// Tests
+// PutChunk tests
 // ---------------------------------------------------------------------------
 
 // TestPutChunk_HappyPath sends a multi-frame payload and checks that
@@ -124,7 +130,6 @@ func TestPutChunk_HappyPath(t *testing.T) {
 	assert.Equal(t, int32(200), resp.Response.Code)
 	assert.Equal(t, serverTestChunkId, resp.ChunkId)
 
-	// Chunk must be persisted and bit-for-bit correct.
 	got, readErr := ds.Read(serverTestChunkId)
 	require.NoError(t, readErr)
 	assert.Equal(t, payload, got)
@@ -133,31 +138,27 @@ func TestPutChunk_HappyPath(t *testing.T) {
 func TestPutChunk_ChunkIdChangedMidStream(t *testing.T) {
 	client, ds := newTestServer(t)
 
-	payload := make([]byte, 3*1024) // 3 KiB
+	payload := make([]byte, 3*1024)
 	for i := range payload {
 		payload[i] = byte(i % 251)
 	}
 
-	frames := buildFrames(serverTestChunkId, payload, 1024) // 3 frames of 1 KiB each
-
-	// change the id
+	frames := buildFrames(serverTestChunkId, payload, 1024)
 	frames[1].ChunkId = "mismatch"
 
 	resp, err := send(t, client, frames)
 	assert.Error(t, err)
 	assert.Nil(t, resp)
-	// Chunk must be persisted and bit-for-bit correct.
 	_, readErr := ds.Read(serverTestChunkId)
 	assert.Error(t, readErr)
 }
 
-// TestPutChunk_SingleFrameIsLast exercises the single-frame path
-// (first frame also has IsLast=true).
+// TestPutChunk_SingleFrameIsLast exercises the single-frame path.
 func TestPutChunk_SingleFrameIsLast(t *testing.T) {
 	client, ds := newTestServer(t)
 
 	payload := []byte("one-shot chunk payload")
-	frames := buildFrames(serverTestChunkId, payload, len(payload)) // single frame
+	frames := buildFrames(serverTestChunkId, payload, len(payload))
 	resp, err := send(t, client, frames)
 	require.NoError(t, err)
 	assert.Equal(t, int32(200), resp.Response.Code)
@@ -166,27 +167,23 @@ func TestPutChunk_SingleFrameIsLast(t *testing.T) {
 	assert.Equal(t, payload, got)
 }
 
-// TestPutChunk_EmptyStream checks that a empty streams return error
+// TestPutChunk_EmptyStream checks that empty streams return an error.
 func TestPutChunk_EmptyStream(t *testing.T) {
 	client, _ := newTestServer(t)
 
 	stream, err := client.PutChunk(context.Background())
 	require.NoError(t, err)
 
-	// havnt sent anything lets close it
-
 	_, rpcErr := stream.CloseAndRecv()
 	require.Error(t, rpcErr)
 	assert.Equal(t, codes.InvalidArgument, status.Code(rpcErr))
 }
 
-// TestPutChunk_ChecksumMismatch sends frames with a wrong final checksum and
-// expects the server to reject with codes.Internal.
+// TestPutChunk_ChecksumMismatch expects codes.Internal for a bad checksum.
 func TestPutChunk_ChecksumMismatch(t *testing.T) {
 	client, _ := newTestServer(t)
 
 	frames := buildFrames(serverTestChunkId, []byte("real data"), 1024)
-	// Corrupt the checksum on the final frame.
 	frames[len(frames)-1].Checksum = []byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
 	_, rpcErr := send(t, client, frames)
@@ -194,59 +191,318 @@ func TestPutChunk_ChecksumMismatch(t *testing.T) {
 	assert.Equal(t, codes.Internal, status.Code(rpcErr))
 }
 
-// TestPutChunk_ResponseContainsChecksum verifies the echoed checksum in the
-// response matches what the client sent.
+// TestPutChunk_ResponseContainsChecksum verifies the echoed checksum in the response.
 func TestPutChunk_ResponseContainsChecksum(t *testing.T) {
 	client, _ := newTestServer(t)
 
 	payload := []byte("checksum echo test")
 	h := sha256.Sum256(payload)
-	expectedCS := h[:]
 
 	frames := buildFrames(serverTestChunkId, payload, len(payload))
 	resp, err := send(t, client, frames)
 	require.NoError(t, err)
-
-	assert.Equal(t, expectedCS, resp.Checksum)
+	assert.Equal(t, h[:], resp.Checksum)
 }
 
 // ---------------------------------------------------------------------------
-// Unimplemented gRPC methods
+// GetChunk tests
 // ---------------------------------------------------------------------------
 
-func TestGetChunk_ReturnsUnimplemented(t *testing.T) {
+// TestGetChunk_HappyPath uploads a chunk then streams it back,
+// reassembling the payload and checking byte equality.
+func TestGetChunk_HappyPath(t *testing.T) {
 	client, _ := newTestServer(t)
+
+	payload := make([]byte, 3*1024)
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
+	putChunk(t, client, serverTestChunkId, payload)
+
 	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
 		ChunkId: serverTestChunkId,
 	})
 	require.NoError(t, err)
-	_, recvErr := stream.Recv()
-	require.Error(t, recvErr)
-	assert.Equal(t, codes.Unimplemented, status.Code(recvErr))
+
+	var got []byte
+	for {
+		frame, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		got = append(got, frame.Data...)
+		if frame.IsLast {
+			_, _ = stream.Recv() // drain EOF
+			break
+		}
+	}
+	assert.Equal(t, payload, got)
 }
 
-func TestDeleteChunk_ReturnsUnimplemented(t *testing.T) {
+// TestGetChunk_ChunkIdInResponse ensures every frame carries the correct chunk_id.
+func TestGetChunk_ChunkIdInResponse(t *testing.T) {
 	client, _ := newTestServer(t)
+
+	putChunk(t, client, serverTestChunkId, []byte("id echo test"))
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	for {
+		frame, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		assert.Equal(t, serverTestChunkId, frame.ChunkId)
+	}
+}
+
+// TestGetChunk_ChecksumPerFrame verifies per-frame checksum = SHA-256(frame.Data).
+func TestGetChunk_ChecksumPerFrame(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	payload := make([]byte, 3*1024)
+	for i := range payload {
+		payload[i] = byte(i)
+	}
+	putChunk(t, client, serverTestChunkId, payload)
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	for {
+		frame, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		expected := sha256.Sum256(frame.Data)
+		assert.Equal(t, expected[:], frame.Checksum,
+			"per-frame checksum mismatch for frame len=%d", len(frame.Data))
+	}
+}
+
+// TestGetChunk_LastFrameMarked verifies exactly one frame has IsLast=true.
+func TestGetChunk_LastFrameMarked(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	putChunk(t, client, serverTestChunkId, make([]byte, 3*1024))
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	var lastCount int
+	var seenLast bool
+	for {
+		frame, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		if seenLast {
+			t.Error("received frame after IsLast=true")
+		}
+		if frame.IsLast {
+			lastCount++
+			seenLast = true
+		}
+	}
+	assert.Equal(t, 1, lastCount, "expected exactly one frame with IsLast=true")
+}
+
+// TestGetChunk_UnknownChunk expects NotFound when the chunk does not exist.
+func TestGetChunk_UnknownChunk(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	_, recvErr := stream.Recv()
+	require.Error(t, recvErr)
+	assert.Equal(t, codes.NotFound, status.Code(recvErr))
+}
+
+// TestGetChunk_EmptyChunkId expects InvalidArgument for an empty chunk_id.
+func TestGetChunk_EmptyChunkId(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: "",
+	})
+	require.NoError(t, err)
+
+	_, recvErr := stream.Recv()
+	require.Error(t, recvErr)
+	assert.Equal(t, codes.InvalidArgument, status.Code(recvErr))
+}
+
+// TestGetChunk_MultiFrameReassembly uploads a 200 KiB payload (spans many frames)
+// and verifies correct reassembly on the client side.
+func TestGetChunk_MultiFrameReassembly(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	payload := make([]byte, 200*1024)
+	for i := range payload {
+		payload[i] = byte(i % 199)
+	}
+	putChunk(t, client, serverTestChunkId, payload)
+
+	stream, err := client.GetChunk(context.Background(), &pb_storage.GetChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	var reassembled []byte
+	for {
+		frame, recvErr := stream.Recv()
+		if recvErr != nil {
+			break
+		}
+		reassembled = append(reassembled, frame.Data...)
+		if frame.IsLast {
+			_, _ = stream.Recv() // drain EOF
+			break
+		}
+	}
+	assert.Equal(t, payload, reassembled)
+}
+
+// ---------------------------------------------------------------------------
+// DeleteChunk tests
+// ---------------------------------------------------------------------------
+
+// TestDeleteChunk_HappyPath uploads a chunk then deletes it and verifies
+// it is gone from the store.
+func TestDeleteChunk_HappyPath(t *testing.T) {
+	client, ds := newTestServer(t)
+
+	putChunk(t, client, serverTestChunkId, []byte("delete me"))
+	require.True(t, ds.Exists(serverTestChunkId))
+
 	stream, err := client.DeleteChunk(context.Background(), &pb_storage.DeleteChunkRequest{
 		ChunkId: serverTestChunkId,
 	})
 	require.NoError(t, err)
-	_, recvErr := stream.Recv()
-	require.Error(t, recvErr)
-	assert.Equal(t, codes.Unimplemented, status.Code(recvErr))
+
+	resp, recvErr := stream.Recv()
+	require.NoError(t, recvErr)
+	assert.True(t, resp.Success)
+	assert.Equal(t, int32(200), resp.Response.Code)
+
+	assert.False(t, ds.Exists(serverTestChunkId), "chunk should be absent after delete")
 }
 
-func TestVerifyChunk_ReturnsUnimplemented(t *testing.T) {
+// TestDeleteChunk_Idempotent checks that deleting a non-existent chunk
+// succeeds (idempotent — not an error if already gone, per spec).
+func TestDeleteChunk_Idempotent(t *testing.T) {
 	client, _ := newTestServer(t)
+
+	stream, err := client.DeleteChunk(context.Background(), &pb_storage.DeleteChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+
+	resp, recvErr := stream.Recv()
+	require.NoError(t, recvErr)
+	assert.True(t, resp.Success)
+}
+
+// TestDeleteChunk_EmptyChunkId expects InvalidArgument for an empty chunk_id.
+func TestDeleteChunk_EmptyChunkId(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	stream, err := client.DeleteChunk(context.Background(), &pb_storage.DeleteChunkRequest{
+		ChunkId: "",
+	})
+	require.NoError(t, err)
+
+	_, recvErr := stream.Recv()
+	require.Error(t, recvErr)
+	assert.Equal(t, codes.InvalidArgument, status.Code(recvErr))
+}
+
+// ---------------------------------------------------------------------------
+// VerifyChunk tests
+// ---------------------------------------------------------------------------
+
+// TestVerifyChunk_HappyPath uploads a chunk and verifies it without supplying
+// an explicit expected checksum — server checks against its stored checksum.
+func TestVerifyChunk_HappyPath(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	putChunk(t, client, serverTestChunkId, []byte("verify me"))
+
+	resp, err := client.VerifyChunk(context.Background(), &pb_storage.VerifyChunkRequest{
+		ChunkId: serverTestChunkId,
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.IsValid)
+}
+
+// TestVerifyChunk_WithCorrectChecksum supplies the correct expected checksum.
+func TestVerifyChunk_WithCorrectChecksum(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	payload := []byte("verify with correct checksum")
+	h := sha256.Sum256(payload)
+	putChunk(t, client, serverTestChunkId, payload)
+
+	resp, err := client.VerifyChunk(context.Background(), &pb_storage.VerifyChunkRequest{
+		ChunkId:  serverTestChunkId,
+		Checksum: h[:],
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.IsValid)
+}
+
+// TestVerifyChunk_WithWrongChecksum supplies an incorrect expected checksum;
+// expects IsValid=false (not an RPC error — corruption is a data-level result).
+func TestVerifyChunk_WithWrongChecksum(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	putChunk(t, client, serverTestChunkId, []byte("verify with wrong checksum"))
+
+	resp, err := client.VerifyChunk(context.Background(), &pb_storage.VerifyChunkRequest{
+		ChunkId:  serverTestChunkId,
+		Checksum: make([]byte, 32), // all-zero — will not match
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.IsValid)
+}
+
+// TestVerifyChunk_UnknownChunk expects NotFound when the chunk does not exist.
+func TestVerifyChunk_UnknownChunk(t *testing.T) {
+	client, _ := newTestServer(t)
+
 	_, err := client.VerifyChunk(context.Background(), &pb_storage.VerifyChunkRequest{
 		ChunkId: serverTestChunkId,
 	})
 	require.Error(t, err)
-	assert.Equal(t, codes.Unimplemented, status.Code(err))
+	assert.Equal(t, codes.NotFound, status.Code(err))
 }
 
-// TestNewStorageServer_NilStore verifies the constructor returns an error when
-// store is nil, so callers never get a server that will panic on the first RPC.
+// TestVerifyChunk_EmptyChunkId expects InvalidArgument for an empty chunk_id.
+func TestVerifyChunk_EmptyChunkId(t *testing.T) {
+	client, _ := newTestServer(t)
+
+	_, err := client.VerifyChunk(context.Background(), &pb_storage.VerifyChunkRequest{
+		ChunkId: "",
+	})
+	require.Error(t, err)
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+// ---------------------------------------------------------------------------
+// Constructor tests
+// ---------------------------------------------------------------------------
+
+// TestNewStorageServer_NilStore verifies that passing a nil store returns an error.
 func TestNewStorageServer_NilStore(t *testing.T) {
 	_, err := NewStorageServer(nil, nil)
 	require.Error(t, err)

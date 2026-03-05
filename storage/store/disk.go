@@ -191,11 +191,10 @@ func (ds *DiskStore) Delete(chunkId string) error {
 		return ChunkNotFound
 	}
 
-	fullPath, err := ds.PathForChunk(chunkId)
+	chunkPath, err := ds.PathForChunk(chunkId)
 	if err != nil {
 		return err
 	}
-	chunkPath := filepath.Join(ds.rootDir, fullPath)
 
 	info, err := os.Stat(chunkPath)
 	if err != nil {
@@ -262,11 +261,11 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 	// If the chunk already exists we subtract the old size before adding the new.
 	var existingSize uint64
 	if ds.Exists(chunkId) {
-		relPath, err := ds.PathForChunk(chunkId)
+		abs, err := ds.PathForChunk(chunkId)
 		if err != nil {
 			return err
 		}
-		info, err := os.Stat(filepath.Join(ds.rootDir, relPath))
+		info, err := os.Stat(abs)
 		if err == nil {
 			existingSize = uint64(info.Size())
 		}
@@ -335,11 +334,12 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 
 // Rename takes the source file and renames it to the destination chunk path,
 // then records the checksum and updates usedSpace.
-//
+// NOTE: this functions accepts a chunkId only as store manages the dir structure on its own
+// so direct movement among directories is not allowed.
 // example:
 //
 //	from source = /store/temp/xyz.tmp
-//	to dest     = rootDir/ab/sd/final.chunk
+//	to dest     = chunkId 
 //
 // This func is crucial to finalise a chunk written via ChunkWriter.
 func (ds *DiskStore) Rename(source, chunkId string) error {
@@ -357,11 +357,10 @@ func (ds *DiskStore) Rename(source, chunkId string) error {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	relDest, err := ds.PathForChunk(chunkId)
+	dest, err := ds.PathForChunk(chunkId)
 	if err != nil {
 		return err
 	}
-	dest := filepath.Join(ds.rootDir, relDest)
 	destDir := filepath.Dir(dest)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		ds.logger.Error("Rename: failed to create dest dir", err, slog.String("destDir", destDir))
@@ -463,12 +462,10 @@ func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
 		return nil, ChunkNotFound
 	}
 
-	res, err := ds.PathForChunk(chunkId)
+	chunkPath, err := ds.PathForChunk(chunkId)
 	if err != nil {
 		return nil, err
 	}
-
-	chunkPath := filepath.Join(ds.rootDir, res)
 
 	data, err := os.ReadFile(chunkPath)
 	if err != nil {
@@ -513,9 +510,11 @@ func (ds *DiskStore) TempDir(chunkId string) (string, error) {
 	return filepath.Join(ds.tempDir, fmt.Sprintf("%s.%s", chunkId, ".tmp")), nil
 }
 
-// PathForChunk returns the full relative path (from rootDir) for a chunk.
-// for example say for chunkid abcdefghijk... and shardLvl = 2
-// it returns ab/cd/abcdefghijk....chunk
+// PathForChunk returns the absolute path on disk for the given chunk.
+// For example, with rootDir="/data", chunkId="abcdefgh1234", splitLevel=2:
+//
+//	/data/ab/cd/abcdefgh1234.chunk
+//
 // Returns InvalidChunkId if chunkId fails validation (empty, too short,
 // contains path separators, or ".." sequences).
 func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
@@ -523,13 +522,15 @@ func (ds *DiskStore) PathForChunk(chunkId string) (string, error) {
 		return "", err
 	}
 
-	res, err := getDirForChunkId(chunkId, ds.splitLevel)
+	shardDir, err := getDirForChunkId(chunkId, ds.splitLevel)
 	if err != nil {
 		return "", err
 	}
 
-	chunkPath := filepath.Join(res, fmt.Sprintf("%s.%s", chunkId, "chunk"))
-	return chunkPath, nil
+	// Return the full absolute path so callers can open the file directly
+	// without knowing rootDir.
+	absPath := filepath.Join(ds.rootDir, shardDir, fmt.Sprintf("%s.chunk", chunkId))
+	return absPath, nil
 }
 
 // FreeSpace returns the available space on disk
