@@ -334,7 +334,7 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 
 // Rename takes the source file and renames it to the destination chunk path,
 // then records the checksum and updates usedSpace.
-// NOTE: this functions accepts a chunkId only as store manages the dir structure on its own
+// NOTE: this function accepts a chunkId only as store manages the dir structure on its own
 // so direct movement among directories is not allowed.
 // example:
 //
