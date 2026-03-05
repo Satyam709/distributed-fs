@@ -7,18 +7,22 @@ import (
 
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/storage/replication"
 	"github.com/satyam709/distributed-fs/storage/server"
 	"github.com/satyam709/distributed-fs/storage/store"
 	"google.golang.org/grpc"
 )
 
 // StorageNode is the top-level runtime for a storage service instance.
-// It owns the gRPC server lifecycle and delegates requests to the StorageServer.
+// It owns the gRPC server lifecycle and wires the StorageService,
+// ReplicationService, PeerDialer, and Replication Manager together.
 type StorageNode struct {
-	config     StorageNodeConfig
-	logger     *logging.CLogger
-	store      store.Store
-	grpcServer *grpc.Server
+	config             StorageNodeConfig
+	logger             *logging.CLogger
+	store              store.Store
+	grpcServer         *grpc.Server
+	peerDialer         *replication.PeerDialer
+	replicationManager *replication.ReplicationManager
 }
 
 // NewStorageNode constructs a StorageNode. Returns an error if store or logger
@@ -30,11 +34,21 @@ func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.
 	if logger == nil {
 		return nil, errors.New("StorageNode: logger must not be nil")
 	}
-	return &StorageNode{config: cfg, store: store, logger: logger}, nil
+
+	dialer := replication.NewPeerDialer()
+	manager := replication.NewReplicationManager(dialer, store)
+
+	return &StorageNode{
+		config:             cfg,
+		store:              store,
+		logger:             logger,
+		peerDialer:         dialer,
+		replicationManager: manager,
+	}, nil
 }
 
-// Start binds the TCP listener and launches the gRPC server in a goroutine.
-// It returns immediately; use Stop to initiate a graceful shutdown.
+// Start binds the TCP listener, wires gRPC services, and launches the server
+// in a goroutine. It returns immediately; use Stop to initiate graceful shutdown.
 func (s *StorageNode) Start() error {
 	if err := s.config.Validate(); err != nil {
 		return err
@@ -50,11 +64,22 @@ func (s *StorageNode) Start() error {
 
 	s.grpcServer = grpc.NewServer(grpc.ConnectionTimeout(s.config.Timeout))
 
-	storageServer, err := server.NewStorageServer(s.store, s.logger)
+	// StorageService — client-facing RPC (PutChunk, GetChunk, etc.)
+	storageServer, err := server.NewStorageServer(s.store, s.logger, s.replicationManager)
 	if err != nil {
 		return err
 	}
 	pb_storage.RegisterStorageServiceServer(s.grpcServer, storageServer)
+
+	// ReplicationService — internal P2P RPC (ReplicateChunk)
+	replServer, err := server.NewReplicationServer(s.store, s.logger)
+	if err != nil {
+		return err
+	}
+	pb_storage.RegisterReplicationServiceServer(s.grpcServer, replServer)
+
+	// Start repair worker pool.
+	s.replicationManager.Start()
 
 	s.logger.Info("StorageNode: gRPC server starting",
 		slog.String("addr", s.config.Port),
@@ -72,13 +97,15 @@ func (s *StorageNode) Start() error {
 	return nil
 }
 
-// Stop initiates a graceful shutdown of the gRPC server. Pending RPCs are
-// allowed to complete; new connections are rejected immediately.
+// Stop initiates a graceful shutdown of the gRPC server, repair workers,
+// and peer connections.
 func (s *StorageNode) Stop() {
 	if s.grpcServer == nil {
 		return
 	}
 	s.logger.Info("StorageNode: initiating graceful shutdown")
 	s.grpcServer.GracefulStop()
+	s.replicationManager.Stop()
+	s.peerDialer.CloseAll()
 	s.logger.Info("StorageNode: stopped")
 }

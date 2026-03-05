@@ -241,3 +241,109 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "proto/storage/v1/storage.proto",
 }
+
+const (
+	ReplicationService_ReplicateChunk_FullMethodName = "/proto.storage.v1.ReplicationService/ReplicateChunk"
+)
+
+// ReplicationServiceClient is the client API for ReplicationService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ReplicationService (storage node → storage node, internal only)
+type ReplicationServiceClient interface {
+	// Bidirectional stream for P2P chunk replication.
+	// Receiver acks each frame for flow control; sender slows if receiver is overwhelmed.
+	// Final response carries the checksum the receiver computed.
+	ReplicateChunk(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ReplicateChunkRequest, ReplicateChunkResponse], error)
+}
+
+type replicationServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationServiceClient {
+	return &replicationServiceClient{cc}
+}
+
+func (c *replicationServiceClient) ReplicateChunk(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ReplicateChunkRequest, ReplicateChunkResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ReplicationService_ServiceDesc.Streams[0], ReplicationService_ReplicateChunk_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ReplicateChunkRequest, ReplicateChunkResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ReplicationService_ReplicateChunkClient = grpc.BidiStreamingClient[ReplicateChunkRequest, ReplicateChunkResponse]
+
+// ReplicationServiceServer is the server API for ReplicationService service.
+// All implementations must embed UnimplementedReplicationServiceServer
+// for forward compatibility.
+//
+// ReplicationService (storage node → storage node, internal only)
+type ReplicationServiceServer interface {
+	// Bidirectional stream for P2P chunk replication.
+	// Receiver acks each frame for flow control; sender slows if receiver is overwhelmed.
+	// Final response carries the checksum the receiver computed.
+	ReplicateChunk(grpc.BidiStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]) error
+	mustEmbedUnimplementedReplicationServiceServer()
+}
+
+// UnimplementedReplicationServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedReplicationServiceServer struct{}
+
+func (UnimplementedReplicationServiceServer) ReplicateChunk(grpc.BidiStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]) error {
+	return status.Error(codes.Unimplemented, "method ReplicateChunk not implemented")
+}
+func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
+func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
+
+// UnsafeReplicationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ReplicationServiceServer will
+// result in compilation errors.
+type UnsafeReplicationServiceServer interface {
+	mustEmbedUnimplementedReplicationServiceServer()
+}
+
+func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationServiceServer) {
+	// If the following call panics, it indicates UnimplementedReplicationServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ReplicationService_ServiceDesc, srv)
+}
+
+func _ReplicationService_ReplicateChunk_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ReplicationServiceServer).ReplicateChunk(&grpc.GenericServerStream[ReplicateChunkRequest, ReplicateChunkResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ReplicationService_ReplicateChunkServer = grpc.BidiStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]
+
+// ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ReplicationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.storage.v1.ReplicationService",
+	HandlerType: (*ReplicationServiceServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ReplicateChunk",
+			Handler:       _ReplicationService_ReplicateChunk_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "proto/storage/v1/storage.proto",
+}

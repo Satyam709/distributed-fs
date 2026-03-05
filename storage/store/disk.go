@@ -238,7 +238,11 @@ func (ds *DiskStore) List() ([]string, error) {
 
 // Exists checks if a key exists in the disk store
 func (ds *DiskStore) Exists(chunkId string) bool {
-	_, err := ds.checksumStore.Get(chunkId)
+	err := ds.validateChunkId(chunkId)
+	if err != nil {
+		return false
+	}
+	_, err = ds.checksumStore.Get(chunkId)
 	return err == nil
 }
 
@@ -339,7 +343,7 @@ func (ds *DiskStore) Write(chunkId string, value []byte) error {
 // example:
 //
 //	from source = /store/temp/xyz.tmp
-//	to dest     = chunkId 
+//	to dest     = chunkId
 //
 // This func is crucial to finalise a chunk written via ChunkWriter.
 func (ds *DiskStore) Rename(source, chunkId string) error {
@@ -478,27 +482,32 @@ func (ds *DiskStore) Read(chunkId string) ([]byte, error) {
 }
 
 // Verify checks the integrity of a key in the disk store
-func (ds *DiskStore) Verify(chunkId string) error {
+func (ds *DiskStore) Verify(chunkId string) ([]byte, error) {
 	ds.logger.Debug("Verify", slog.String("chunkId", chunkId))
+
+	err := ds.validateChunkId(chunkId)
+	if err != nil {
+		return nil, err
+	}
 
 	val, err := ds.checksumStore.Get(chunkId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	data, err := ds.Read(chunkId)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	calculatedHash := sha256.Sum256(data)
 
 	if !bytes.Equal(calculatedHash[:], val) {
 		ds.logger.Error("Verify: checksum mismatch", dfserrors.ErrVerifyFailed,
 			slog.String("chunkId", chunkId))
-		return VerifyFailed
+		return nil, VerifyFailed
 	}
 
 	ds.logger.Debug("Verify: ok", slog.String("chunkId", chunkId))
-	return nil
+	return val, nil
 }
 
 // TempDir returns the filepath for tempStoring of chunk.

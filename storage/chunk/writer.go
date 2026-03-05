@@ -137,6 +137,12 @@ func (cw *ChunkWriter) Finalize(expectedChecksum []byte) (err error) {
 	return nil
 }
 
+// ComputedChecksum returns the running SHA-256 checksum accumulated so far.
+// Safe to call at any point; does not finalise the writer.
+func (cw *ChunkWriter) ComputedChecksum() []byte {
+	return cw.hasher.Sum(nil)
+}
+
 // Abort cleans up the partial temp file when the stream dies mid-transfer.
 func (cw *ChunkWriter) Abort() {
 	cw.logger.Info("Abort: removing partial temp file", slog.String("path", cw.filepath))

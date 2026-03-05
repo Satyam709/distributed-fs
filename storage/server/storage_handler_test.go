@@ -508,3 +508,102 @@ func TestNewStorageServer_NilStore(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Store must not be nil")
 }
+
+// ---------------------------------------------------------------------------
+// Replication fanout tests
+// ---------------------------------------------------------------------------
+
+// fakeReplicator records the last ReplicateToNodes call for assertion.
+type fakeReplicator struct {
+	calledWith struct {
+		chunkId string
+		targets []string
+	}
+	callCount int
+}
+
+func (f *fakeReplicator) ReplicateToNodes(_ context.Context, chunkId string, targets []string, _ bool) error {
+	f.callCount++
+	f.calledWith.chunkId = chunkId
+	f.calledWith.targets = append([]string(nil), targets...)
+	return nil
+}
+
+// newTestServerWithReplicator builds an in-process server with an injected replicator.
+func newTestServerWithReplicator(t *testing.T, r Replicator) pb_storage.StorageServiceClient {
+	t.Helper()
+
+	dir := t.TempDir()
+	cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
+		store.WithDbPath[[]byte](dir),
+	)
+	require.NoError(t, err)
+	require.NoError(t, cs.Open())
+	t.Cleanup(cs.CleanUp)
+
+	ds, err := store.NewDiskStore(
+		store.WithRootDir(dir),
+		store.WithTempDir(dir),
+		store.WithSplitLevel(2),
+		store.WithTotalSpace(64*1024*1024),
+		store.WithChecksumStore(cs),
+	)
+	require.NoError(t, err)
+
+	lis := bufconn.Listen(bufSize)
+	srv := grpc.NewServer()
+	ss, err := NewStorageServer(ds, nil, r)
+	require.NoError(t, err)
+	pb_storage.RegisterStorageServiceServer(srv, ss)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.GracefulStop)
+
+	conn, err := grpc.NewClient(
+		"passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	return pb_storage.NewStorageServiceClient(conn)
+}
+
+// TestPutChunk_TriggersReplication verifies that PutChunk calls the Replicator
+// with the correct chunkId and target addresses extracted from replicate_to.
+func TestPutChunk_TriggersReplication(t *testing.T) {
+	replic := &fakeReplicator{}
+	client := newTestServerWithReplicator(t, replic)
+
+	payload := []byte("replication trigger payload")
+	frames := buildFrames(serverTestChunkId, payload, len(payload))
+
+	// Inject replicate_to addresses on the first frame.
+	frames[0].ReplicateTo = []*pb_storage.NodeInfo{
+		{Address: "10.0.0.1:4001"},
+		{Address: "10.0.0.2:4001"},
+	}
+	_, err := send(t, client, frames)
+	// Replication to unreachable addresses will fail, but PutChunk itself
+	// should still return 200 (partial failure is swallowed per design doc).
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, replic.callCount, "ReplicateToNodes must be called once")
+	assert.Equal(t, serverTestChunkId, replic.calledWith.chunkId)
+	assert.Equal(t, []string{"10.0.0.1:4001", "10.0.0.2:4001"}, replic.calledWith.targets)
+}
+
+// TestPutChunk_NoFanoutWithoutReplicator verifies that PutChunk works normally
+// when no Replicator is wired in (nil).
+func TestPutChunk_NoFanoutWithoutReplicator(t *testing.T) {
+	client, _ := newTestServer(t) // no replicator
+
+	payload := []byte("no fanout payload")
+	frames := buildFrames(serverTestChunkId, payload, len(payload))
+	frames[0].ReplicateTo = []*pb_storage.NodeInfo{{Address: "10.0.0.1:4001"}}
+
+	resp, err := send(t, client, frames)
+	require.NoError(t, err)
+	assert.Equal(t, int32(200), resp.Response.Code)
+}
