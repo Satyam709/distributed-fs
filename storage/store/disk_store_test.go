@@ -370,7 +370,8 @@ func TestRename(t *testing.T) {
 	assert.True(t, ds.Exists(minChunkId), "chunk should exist after Rename")
 
 	// Checksum should be correct
-	assert.NoError(t, ds.Verify(minChunkId))
+	_, err = ds.Verify(minChunkId)
+	assert.NoError(t, err)
 
 	// usedSpace should reflect file size
 	size, _ := ds.Size()
@@ -441,7 +442,7 @@ func TestVerify(t *testing.T) {
 
 			c.setup(ds, chunkPath)
 
-			err = ds.Verify(minChunkId)
+			_, err = ds.Verify(minChunkId)
 			if c.wantErr != nil {
 				assert.ErrorIs(t, err, c.wantErr)
 			} else {
@@ -453,7 +454,7 @@ func TestVerify(t *testing.T) {
 
 func TestVerify_MissingChunk_ReturnsError(t *testing.T) {
 	ds := newTestDiskStore(t, 1024*1024)
-	err := ds.Verify("neverwritten12")
+	_, err := ds.Verify("neverwritten12")
 	assert.Error(t, err)
 }
 

@@ -7,7 +7,7 @@ type Store interface {
 	Delete(string) error
 	Exists(string) bool
 	TempDir(string) (string, error)
-	Verify(string) error
+	Verify(string) ([]byte, error)
 	List() ([]string, error)
 	FreeSpace() (uint64, error)
 	PathForChunk(string) (string, error)

@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"io"
 	"log/slog"
@@ -18,16 +17,23 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Replicator is the interface that ReplicationManager satisfies.
+// StorageServer calls it after a successful chunk finalise.
+type Replicator interface {
+	ReplicateToNodes(ctx context.Context, chunkId string, targets []string, async bool) error
+}
+
 // StorageServer implements the StorageServiceServer gRPC interface.
 type StorageServer struct {
 	pb_storage.UnimplementedStorageServiceServer
-	Store  store.Store
-	logger *logging.CLogger
+	Store      store.Store
+	Replicator Replicator // optional; nil means no fan-out
+	logger     *logging.CLogger
 }
 
 // NewStorageServer creates a StorageServer with a component-scoped logger.
-// Returns an error if s is nil.
-func NewStorageServer(s store.Store, logger *logging.CLogger) (*StorageServer, error) {
+// Returns an error if s is nil. r is optional (nil = no replication fan-out).
+func NewStorageServer(s store.Store, logger *logging.CLogger, r ...Replicator) (*StorageServer, error) {
 	if s == nil {
 		return nil, errors.New("StorageServer: Store must not be nil")
 	}
@@ -36,7 +42,11 @@ func NewStorageServer(s store.Store, logger *logging.CLogger) (*StorageServer, e
 		l = logger
 	}
 	l.Logger = *l.Logger.With(slog.String("component", "StorageServer"))
-	return &StorageServer{Store: s, logger: l}, nil
+	var repl Replicator
+	if len(r) > 0 {
+		repl = r[0]
+	}
+	return &StorageServer{Store: s, Replicator: repl, logger: l}, nil
 }
 
 // PutChunk receives a client-streaming RPC that delivers chunk data in
@@ -60,13 +70,13 @@ func NewStorageServer(s store.Store, logger *logging.CLogger) (*StorageServer, e
 func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.PutChunkRequest, pb_storage.PutChunkResponse]) error {
 	var writer *chunk.ChunkWriter
 	var registeredChunkId string
+	var replicateTo []string // addresses extracted from the first frame
 
 	s.logger.Info("PutChunk: stream opened")
 	var lastFrame *pb_storage.PutChunkRequest
 
 	for {
 		frame, err := stream.Recv()
-
 		// EOF: client closed the send side.
 		if err == io.EOF {
 			// No frames were received at all — malformed call.
@@ -95,6 +105,25 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 			}
 
 			s.logger.Info("PutChunk: chunk stored", slog.String("chunkId", lastFrame.ChunkId))
+
+			// Fan out to replica nodes if targets were specified on the first frame.
+			if s.Replicator != nil && len(replicateTo) > 0 {
+				s.logger.Info("PutChunk: triggering replication",
+					slog.String("chunkId", lastFrame.ChunkId),
+					slog.Int("targets", len(replicateTo)),
+				)
+				if replErr := s.Replicator.ReplicateToNodes(
+					stream.Context(), lastFrame.ChunkId, replicateTo, false,
+				); replErr != nil {
+					s.logger.Info("PutChunk: replication failed (partial)",
+						slog.String("chunkId", lastFrame.ChunkId),
+						slog.String("error", replErr.Error()),
+					)
+					// Per design: partial failure is logged but not surfaced as
+					// an RPC error to the client — the repair scheduler fills gaps.
+				}
+			}
+
 			// Echo the chunk_id and the client-supplied checksum back so the
 			// caller can confirm the correct chunk was committed.
 			return stream.SendAndClose(&pb_storage.PutChunkResponse{
@@ -130,6 +159,14 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 				return status.Error(codes.Internal, "failed to initialise chunk writer")
 			}
 			registeredChunkId = frame.ChunkId
+
+			// Capture replica targets from the first frame's replicate_to field.
+			for _, ni := range frame.ReplicateTo {
+				if ni != nil && ni.GetAddress() != "" {
+					replicateTo = append(replicateTo, ni.GetAddress())
+				}
+			}
+			slog.Info("got targets ", "len", len(replicateTo))
 		}
 
 		// Reject frames that switch chunk_id mid-stream.
@@ -296,7 +333,7 @@ func (s *StorageServer) VerifyChunk(ctx context.Context, req *pb_storage.VerifyC
 
 	// Internal consistency check: recompute SHA-256 and compare to the stored
 	// checksum index.
-	verifyErr := s.Store.Verify(chunkId)
+	computed, verifyErr := s.Store.Verify(chunkId)
 	if verifyErr != nil {
 		if errors.Is(verifyErr, dfserrors.ErrVerifyFailed) {
 			s.logger.Info("VerifyChunk: internal checksum mismatch — chunk corrupted",
@@ -313,15 +350,7 @@ func (s *StorageServer) VerifyChunk(ctx context.Context, req *pb_storage.VerifyC
 
 	// Caller-supplied checksum comparison (optional).
 	if len(req.Checksum) > 0 {
-		data, readErr := s.Store.Read(chunkId)
-		if readErr != nil {
-			s.logger.Error("VerifyChunk: read failed", readErr,
-				slog.String("chunkId", chunkId))
-			return nil, status.Error(codes.Internal, "failed to read chunk for verification")
-		}
-
-		computed := sha256.Sum256(data)
-		if !bytes.Equal(computed[:], req.Checksum) {
+		if !bytes.Equal(computed, req.Checksum) {
 			s.logger.Info("VerifyChunk: caller-supplied checksum mismatch",
 				slog.String("chunkId", chunkId))
 			return &pb_storage.VerifyChunkResponse{

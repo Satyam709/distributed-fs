@@ -567,6 +567,7 @@ func (x *VerifyChunkResponse) GetIsValid() bool {
 
 type NodeInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -599,6 +600,164 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
 	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *NodeInfo) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+// ReplicateChunkRequest - one frame sent from a source storage node to a replica.
+// The first frame carries is_first=true and the chunk_id.
+// Each subsequent frame carries data.
+// The last frame has is_last=true.
+type ReplicateChunkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	IsFirst       bool                   `protobuf:"varint,4,opt,name=is_first,json=isFirst,proto3" json:"is_first,omitempty"`
+	IsLast        bool                   `protobuf:"varint,5,opt,name=is_last,json=isLast,proto3" json:"is_last,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplicateChunkRequest) Reset() {
+	*x = ReplicateChunkRequest{}
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplicateChunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplicateChunkRequest) ProtoMessage() {}
+
+func (x *ReplicateChunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplicateChunkRequest.ProtoReflect.Descriptor instead.
+func (*ReplicateChunkRequest) Descriptor() ([]byte, []int) {
+	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ReplicateChunkRequest) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+func (x *ReplicateChunkRequest) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *ReplicateChunkRequest) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *ReplicateChunkRequest) GetIsFirst() bool {
+	if x != nil {
+		return x.IsFirst
+	}
+	return false
+}
+
+func (x *ReplicateChunkRequest) GetIsLast() bool {
+	if x != nil {
+		return x.IsLast
+	}
+	return false
+}
+
+// ReplicateChunkResponse - sent by the receiving node back to the sender.
+// Per-frame ack (ok=true) provides flow control.
+// The final response (is_final=true) contains the checksum the receiver computed.
+type ReplicateChunkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	IsFinal       bool                   `protobuf:"varint,2,opt,name=is_final,json=isFinal,proto3" json:"is_final,omitempty"`
+	ChunkId       string                 `protobuf:"bytes,3,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	Checksum      []byte                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplicateChunkResponse) Reset() {
+	*x = ReplicateChunkResponse{}
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplicateChunkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplicateChunkResponse) ProtoMessage() {}
+
+func (x *ReplicateChunkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_storage_v1_storage_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplicateChunkResponse.ProtoReflect.Descriptor instead.
+func (*ReplicateChunkResponse) Descriptor() ([]byte, []int) {
+	return file_proto_storage_v1_storage_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReplicateChunkResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ReplicateChunkResponse) GetIsFinal() bool {
+	if x != nil {
+		return x.IsFinal
+	}
+	return false
+}
+
+func (x *ReplicateChunkResponse) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+func (x *ReplicateChunkResponse) GetChecksum() []byte {
+	if x != nil {
+		return x.Checksum
+	}
+	return nil
 }
 
 var File_proto_storage_v1_storage_proto protoreflect.FileDescriptor
@@ -644,14 +803,27 @@ const file_proto_storage_v1_storage_proto_rawDesc = "" +
 	"\x13VerifyChunkResponse\x12;\n" +
 	"\bresponse\x18\x01 \x01(\v2\x1a.proto.storage.v1.ResponseH\x00R\bresponse\x88\x01\x01\x12\x19\n" +
 	"\bis_valid\x18\x02 \x01(\bR\aisValidB\v\n" +
-	"\t_response\"\n" +
-	"\n" +
-	"\bNodeInfo2\xf4\x02\n" +
+	"\t_response\"$\n" +
+	"\bNodeInfo\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\"\x92\x01\n" +
+	"\x15ReplicateChunkRequest\x12\x19\n" +
+	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\x12\x19\n" +
+	"\bis_first\x18\x04 \x01(\bR\aisFirst\x12\x17\n" +
+	"\ais_last\x18\x05 \x01(\bR\x06isLast\"z\n" +
+	"\x16ReplicateChunkResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x19\n" +
+	"\bis_final\x18\x02 \x01(\bR\aisFinal\x12\x19\n" +
+	"\bchunk_id\x18\x03 \x01(\tR\achunkId\x12\x1a\n" +
+	"\bchecksum\x18\x04 \x01(\fR\bchecksum2\xf4\x02\n" +
 	"\x0eStorageService\x12S\n" +
 	"\bPutChunk\x12!.proto.storage.v1.PutChunkRequest\x1a\".proto.storage.v1.PutChunkResponse(\x01\x12S\n" +
 	"\bGetChunk\x12!.proto.storage.v1.GetChunkRequest\x1a\".proto.storage.v1.GetChunkResponse0\x01\x12\\\n" +
 	"\vDeleteChunk\x12$.proto.storage.v1.DeleteChunkRequest\x1a%.proto.storage.v1.DeleteChunkResponse0\x01\x12Z\n" +
-	"\vVerifyChunk\x12$.proto.storage.v1.VerifyChunkRequest\x1a%.proto.storage.v1.VerifyChunkResponseB%Z#github.com/satyam709/gen/pb_storageb\x06proto3"
+	"\vVerifyChunk\x12$.proto.storage.v1.VerifyChunkRequest\x1a%.proto.storage.v1.VerifyChunkResponse2}\n" +
+	"\x12ReplicationService\x12g\n" +
+	"\x0eReplicateChunk\x12'.proto.storage.v1.ReplicateChunkRequest\x1a(.proto.storage.v1.ReplicateChunkResponse(\x010\x01B%Z#github.com/satyam709/gen/pb_storageb\x06proto3"
 
 var (
 	file_proto_storage_v1_storage_proto_rawDescOnce sync.Once
@@ -665,38 +837,42 @@ func file_proto_storage_v1_storage_proto_rawDescGZIP() []byte {
 	return file_proto_storage_v1_storage_proto_rawDescData
 }
 
-var file_proto_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_proto_storage_v1_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_proto_storage_v1_storage_proto_goTypes = []any{
-	(*PutChunkRequest)(nil),     // 0: proto.storage.v1.PutChunkRequest
-	(*PutChunkResponse)(nil),    // 1: proto.storage.v1.PutChunkResponse
-	(*Response)(nil),            // 2: proto.storage.v1.Response
-	(*GetChunkRequest)(nil),     // 3: proto.storage.v1.GetChunkRequest
-	(*GetChunkResponse)(nil),    // 4: proto.storage.v1.GetChunkResponse
-	(*DeleteChunkRequest)(nil),  // 5: proto.storage.v1.DeleteChunkRequest
-	(*DeleteChunkResponse)(nil), // 6: proto.storage.v1.DeleteChunkResponse
-	(*VerifyChunkRequest)(nil),  // 7: proto.storage.v1.VerifyChunkRequest
-	(*VerifyChunkResponse)(nil), // 8: proto.storage.v1.VerifyChunkResponse
-	(*NodeInfo)(nil),            // 9: proto.storage.v1.NodeInfo
+	(*PutChunkRequest)(nil),        // 0: proto.storage.v1.PutChunkRequest
+	(*PutChunkResponse)(nil),       // 1: proto.storage.v1.PutChunkResponse
+	(*Response)(nil),               // 2: proto.storage.v1.Response
+	(*GetChunkRequest)(nil),        // 3: proto.storage.v1.GetChunkRequest
+	(*GetChunkResponse)(nil),       // 4: proto.storage.v1.GetChunkResponse
+	(*DeleteChunkRequest)(nil),     // 5: proto.storage.v1.DeleteChunkRequest
+	(*DeleteChunkResponse)(nil),    // 6: proto.storage.v1.DeleteChunkResponse
+	(*VerifyChunkRequest)(nil),     // 7: proto.storage.v1.VerifyChunkRequest
+	(*VerifyChunkResponse)(nil),    // 8: proto.storage.v1.VerifyChunkResponse
+	(*NodeInfo)(nil),               // 9: proto.storage.v1.NodeInfo
+	(*ReplicateChunkRequest)(nil),  // 10: proto.storage.v1.ReplicateChunkRequest
+	(*ReplicateChunkResponse)(nil), // 11: proto.storage.v1.ReplicateChunkResponse
 }
 var file_proto_storage_v1_storage_proto_depIdxs = []int32{
-	9, // 0: proto.storage.v1.PutChunkRequest.replicate_to:type_name -> proto.storage.v1.NodeInfo
-	2, // 1: proto.storage.v1.PutChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 2: proto.storage.v1.GetChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 3: proto.storage.v1.DeleteChunkResponse.response:type_name -> proto.storage.v1.Response
-	2, // 4: proto.storage.v1.VerifyChunkResponse.response:type_name -> proto.storage.v1.Response
-	0, // 5: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
-	3, // 6: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
-	5, // 7: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
-	7, // 8: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
-	1, // 9: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
-	4, // 10: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
-	6, // 11: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
-	8, // 12: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
-	9, // [9:13] is the sub-list for method output_type
-	5, // [5:9] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	9,  // 0: proto.storage.v1.PutChunkRequest.replicate_to:type_name -> proto.storage.v1.NodeInfo
+	2,  // 1: proto.storage.v1.PutChunkResponse.response:type_name -> proto.storage.v1.Response
+	2,  // 2: proto.storage.v1.GetChunkResponse.response:type_name -> proto.storage.v1.Response
+	2,  // 3: proto.storage.v1.DeleteChunkResponse.response:type_name -> proto.storage.v1.Response
+	2,  // 4: proto.storage.v1.VerifyChunkResponse.response:type_name -> proto.storage.v1.Response
+	0,  // 5: proto.storage.v1.StorageService.PutChunk:input_type -> proto.storage.v1.PutChunkRequest
+	3,  // 6: proto.storage.v1.StorageService.GetChunk:input_type -> proto.storage.v1.GetChunkRequest
+	5,  // 7: proto.storage.v1.StorageService.DeleteChunk:input_type -> proto.storage.v1.DeleteChunkRequest
+	7,  // 8: proto.storage.v1.StorageService.VerifyChunk:input_type -> proto.storage.v1.VerifyChunkRequest
+	10, // 9: proto.storage.v1.ReplicationService.ReplicateChunk:input_type -> proto.storage.v1.ReplicateChunkRequest
+	1,  // 10: proto.storage.v1.StorageService.PutChunk:output_type -> proto.storage.v1.PutChunkResponse
+	4,  // 11: proto.storage.v1.StorageService.GetChunk:output_type -> proto.storage.v1.GetChunkResponse
+	6,  // 12: proto.storage.v1.StorageService.DeleteChunk:output_type -> proto.storage.v1.DeleteChunkResponse
+	8,  // 13: proto.storage.v1.StorageService.VerifyChunk:output_type -> proto.storage.v1.VerifyChunkResponse
+	11, // 14: proto.storage.v1.ReplicationService.ReplicateChunk:output_type -> proto.storage.v1.ReplicateChunkResponse
+	10, // [10:15] is the sub-list for method output_type
+	5,  // [5:10] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proto_storage_v1_storage_proto_init() }
@@ -715,9 +891,9 @@ func file_proto_storage_v1_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_storage_v1_storage_proto_rawDesc), len(file_proto_storage_v1_storage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_proto_storage_v1_storage_proto_goTypes,
 		DependencyIndexes: file_proto_storage_v1_storage_proto_depIdxs,

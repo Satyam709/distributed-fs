@@ -95,7 +95,35 @@ message VerifyChunkResponse {
   bool is_valid = 2;
 }
 
-message NodeInfo {}
+message NodeInfo {
+  string address = 1;
+}
+
+/*
+   ReplicateChunkRequest - one frame sent from a source storage node to a replica.
+   The first frame carries is_first=true and the chunk_id.
+   Each subsequent frame carries data.
+   The last frame has is_last=true.
+*/
+message ReplicateChunkRequest {
+  string chunk_id = 1;
+  int64 offset = 2;
+  bytes data = 3;
+  bool is_first = 4;
+  bool is_last = 5;
+}
+
+/*
+   ReplicateChunkResponse - sent by the receiving node back to the sender.
+   Per-frame ack (ok=true) provides flow control.
+   The final response (is_final=true) contains the checksum the receiver computed.
+*/
+message ReplicateChunkResponse {
+  bool ok = 1;
+  bool is_final = 2;
+  string chunk_id = 3;
+  bytes checksum = 4;
+}
 
 // StorageService (clients → storage nodes)
 service StorageService {
@@ -105,4 +133,12 @@ service StorageService {
   rpc GetChunk(GetChunkRequest) returns (stream GetChunkResponse);
   rpc DeleteChunk(DeleteChunkRequest) returns (stream DeleteChunkResponse);
   rpc VerifyChunk(VerifyChunkRequest) returns (VerifyChunkResponse);
+}
+
+// ReplicationService (storage node → storage node, internal only)
+service ReplicationService {
+  // Bidirectional stream for P2P chunk replication.
+  // Receiver acks each frame for flow control; sender slows if receiver is overwhelmed.
+  // Final response carries the checksum the receiver computed.
+  rpc ReplicateChunk(stream ReplicateChunkRequest) returns (stream ReplicateChunkResponse);
 }

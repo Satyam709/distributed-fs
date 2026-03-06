@@ -118,7 +118,7 @@ func (cr *ChunkReader) Next() (Frame, error) {
 	if err != nil && err != io.EOF {
 		return Frame{}, err
 	}
-	
+
 	// Nothing read: either the stream is exhausted (io.EOF) or a real error.
 	if n == 0 {
 		return Frame{}, err
