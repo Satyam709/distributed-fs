@@ -3,3 +3,10 @@
 *.out
 bin/**
 .env
+
+# Ignore build artifacts
+manifests_logs/
+
+# test artifacts
+test_output/
+test_files/
