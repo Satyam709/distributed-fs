@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sync"
+
 	// "github.com/satyam709/distributed-fs/internal/checksum"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"google.golang.org/grpc"
@@ -14,16 +15,26 @@ import (
 
 type ParallelDownloader struct {
 	maxConcurrency int
+	chunkSize      int64
 }
 
-func NewParallelDownloader(concurrency int) *ParallelDownloader {
+func NewParallelDownloader(concurrency int, chunkSize int64) *ParallelDownloader {
 	if concurrency <= 0 {
 		concurrency = 4 // Default as per Section 7
 	}
-	return &ParallelDownloader{maxConcurrency: concurrency}
+	if chunkSize <= 0 {
+		chunkSize = 4 * 1024 * 1024 // Default to 4MB if not specified
+	}
+	return &ParallelDownloader{maxConcurrency: concurrency, chunkSize: chunkSize}
 }
+
 // Download coordinates the concurrent retrieval of chunks.
-func (d *ParallelDownloader) Download(ctx context.Context, outputPath string, totalSize int64, chunkMap map[int][]string) error {
+type ChunkLocation struct {
+	ChunkID  string
+	Replicas []string
+}
+
+func (d *ParallelDownloader) Download(ctx context.Context, outputPath string, totalSize int64, chunkMap map[int]ChunkLocation) error {
 	// 1. Pre-allocate output file to full size (Section 7 Key Detail)
 	outFile, err := os.Create(outputPath)
 	if err != nil {
@@ -39,18 +50,18 @@ func (d *ParallelDownloader) Download(ctx context.Context, outputPath string, to
 	semaphore := make(chan struct{}, d.maxConcurrency)
 	errChan := make(chan error, len(chunkMap))
 
-	for index, nodes := range chunkMap {
+	for index, loc := range chunkMap {
 		wg.Add(1)
 		semaphore <- struct{}{}
 
-		go func(idx int, replicas []string) {
+		go func(idx int, location ChunkLocation) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			if err := d.downloadWithRetry(ctx, outFile, idx, replicas); err != nil {
+			if err := d.downloadWithRetry(ctx, outFile, idx, location); err != nil {
 				errChan <- err
 			}
-		}(index, nodes)
+		}(index, loc)
 	}
 
 	wg.Wait()
@@ -62,24 +73,24 @@ func (d *ParallelDownloader) Download(ctx context.Context, outputPath string, to
 	return nil
 }
 
-func (d *ParallelDownloader) downloadWithRetry(ctx context.Context, outFile *os.File, index int, replicas []string) error {
-	for _, addr := range replicas {
+func (d *ParallelDownloader) downloadWithRetry(ctx context.Context, outFile *os.File, index int, location ChunkLocation) error {
+	for _, addr := range location.Replicas {
 		// Section 7: Try a replica, on failure/checksum error, try the next one
-		data, err := d.fetchChunk(ctx, addr, index)
+		data, err := d.fetchChunk(ctx, addr, location.ChunkID)
 		if err == nil {
 			// Section 7: Write to specific byte range using WriteAt (no coordination needed)
-			offset := int64(index) * (4 * 1024 * 1024) // Simplified: assumes standard 4MB chunk size
+			offset := int64(index) * d.chunkSize
 			_, err = outFile.WriteAt(data, offset)
 			if err == nil {
 				return nil
 			}
 		}
-		fmt.Printf("Replica %s failed for chunk %d, trying next...\n", addr, index)
+		fmt.Printf("Replica %s failed for chunk %s (index %d), trying next...\n", addr, location.ChunkID, index)
 	}
-	return fmt.Errorf("all replicas failed for chunk %index")
+	return fmt.Errorf("all replicas failed for chunk %s (index %d)", location.ChunkID, index)
 }
 
-func (d *ParallelDownloader) fetchChunk(ctx context.Context, addr string, index int) ([]byte, error) {
+func (d *ParallelDownloader) fetchChunk(ctx context.Context, addr string, chunkID string) ([]byte, error) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
@@ -87,8 +98,7 @@ func (d *ParallelDownloader) fetchChunk(ctx context.Context, addr string, index 
 	defer conn.Close()
 
 	client := pb_storage.NewStorageServiceClient(conn)
-	// Placeholder: In a real impl, you'd need the actual ChunkID from the metadata map
-	stream, err := client.GetChunk(ctx, &pb_storage.GetChunkRequest{}) 
+	stream, err := client.GetChunk(ctx, &pb_storage.GetChunkRequest{ChunkId: chunkID})
 	if err != nil {
 		return nil, err
 	}
