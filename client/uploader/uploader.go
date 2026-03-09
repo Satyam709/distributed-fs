@@ -68,7 +68,11 @@ func (u *ParallelUploader) Upload(ctx context.Context, filePath string, descript
 
 func (u *ParallelUploader) uploadChunk(ctx context.Context, file *os.File, desc chunker.ChunkDescriptor) error {
 	// Read bytes from file at the correct offset using ReadAt (thread-safe).
-	buffer := make([]byte, desc.Size)
+	if desc.Size < 0 || desc.Size > int64(int(^uint(0)>>1)) {
+		return fmt.Errorf("chunk size %d is out of range for this platform", desc.Size)
+	}
+	bufferSize := int(desc.Size)
+	buffer := make([]byte, bufferSize)
 	_, err := file.ReadAt(buffer, desc.Offset)
 	if err != nil {
 		return err
