@@ -6,8 +6,7 @@ build-storage:   # build storage node binary
 build-metadata:  # build metadata node binary  
 build-client:    # build client binary
 	go build -o bin/client ./client/cmd/main.go
-build-all:       # all three
-	build-storage build-client
+build-all: 	build-storage build-client       # all three
 test-storage:    # run storage package tests
 
 test-all:        # all tests
