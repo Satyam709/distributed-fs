@@ -10,3 +10,4 @@ manifests_logs/
 # test artifacts
 test_output/
 test_files/
+/data

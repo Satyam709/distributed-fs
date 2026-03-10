@@ -10,9 +10,8 @@ build-all: 	build-storage build-client       # all three
 test-storage:    # run storage package tests
 
 test-all:        # all tests
-	go test ./...
-run-cluster:	build-all    # start 1 metadata + 4 storage nodes locally
-	@echo "Starting cluster..."
+	go test -count=1 ./...
+run-cluster:     # start 1 metadata + 4 storage nodes locally
 demo:            # run demo script
 	./scripts/test_upload_download.sh
 

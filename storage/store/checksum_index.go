@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ var (
 	ErrKeyNotFound           = errors.New("key not found")
 	ErrBucketNotFound        = errors.New("bucket not found")
 	ErrEmptyKey              = errors.New("key must not be empty")
+	ErrMissingCodec          = errors.New("codec must not be nil: provide a Codec[T] as the first argument to NewChecksumIndexBoltDB")
 )
 
 // Codec defines how values of type T are serialised to and from bytes.
@@ -40,6 +42,37 @@ func (StringCodec) Unmarshal(b []byte) (string, error) {
 	return string(b), nil
 }
 
+// []ByteCodec is a Codec[[]byte] its a stub as by-default bblot stores vals in []byte
+type ByteCodec struct{}
+
+func (ByteCodec) Marshal(v []byte) ([]byte, error) {
+	return v, nil
+}
+
+func (ByteCodec) Unmarshal(b []byte) ([]byte, error) {
+	return b, nil
+}
+
+// Sha256Codec is a Codec[[32]byte] for SHA-256 checksums.
+// It stores the 32-byte array as-is and reads it back, returning an error
+// when the stored slice is not exactly 32 bytes.
+type Sha256Codec struct{}
+
+func (Sha256Codec) Marshal(v [32]byte) ([]byte, error) {
+	b := make([]byte, 32)
+	copy(b, v[:])
+	return b, nil
+}
+
+func (Sha256Codec) Unmarshal(b []byte) ([32]byte, error) {
+	var arr [32]byte
+	if len(b) != 32 {
+		return arr, fmt.Errorf("sha256: expected 32 bytes, got %d", len(b))
+	}
+	copy(arr[:], b)
+	return arr, nil
+}
+
 // BoltChecksumIndex is a generic key→value store backed by bbolt.
 type BoltChecksumIndex[T any] struct {
 	db     *bbolt.DB
@@ -61,13 +94,6 @@ func WithDbPath[T any](path string) BoltChecksumIndexOpts[T] {
 	}
 }
 
-// WithCodec sets the codec used to marshal/unmarshal values.
-func WithCodec[T any](codec Codec[T]) BoltChecksumIndexOpts[T] {
-	return func(b *BoltChecksumIndex[T]) {
-		b.codec = codec
-	}
-}
-
 // WithDefaultPath sets the store path to the module-conventional default
 // (./storage/store). The path argument is intentionally absent: if you need
 // a custom path use WithDbPath instead.
@@ -77,12 +103,19 @@ func WithDefaultPath[T any]() BoltChecksumIndexOpts[T] {
 	}
 }
 
-// NewChecksumIndexBoltDB constructs a BoltChecksumIndex with the given options.
+// NewChecksumIndexBoltDB constructs a BoltChecksumIndex.
+// codec is required — passing nil will cause Open to return ErrMissingCodec.
 // Call Open before using Put or Get.
-func NewChecksumIndexBoltDB[T any](opts ...BoltChecksumIndexOpts[T]) *BoltChecksumIndex[T] {
+func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts[T]) (*BoltChecksumIndex[T], error) {
+
+	if codec == nil {
+		return nil, errors.New("ChecksumIndexBoltDB: codec is required")
+	}
+
 	boltStore := &BoltChecksumIndex[T]{
 		logger: logging.NewCLogger(),
 		bucket: "checksums",
+		codec:  codec,
 	}
 
 	WithDefaultPath[T]()(boltStore)
@@ -92,35 +125,48 @@ func NewChecksumIndexBoltDB[T any](opts ...BoltChecksumIndexOpts[T]) *BoltChecks
 	for _, opt := range opts {
 		opt(boltStore)
 	}
-	return boltStore
+	return boltStore, nil
 }
 
 // Open opens (or creates) the bbolt database file and ensures the bucket
 // exists. Returns ErrDatabaseAlreadyOpened if Open has already been called.
 func (c *BoltChecksumIndex[T]) Open() error {
 	if c.db != nil {
+		c.logger.Debug("Open: database already open")
 		return ErrDatabaseAlreadyOpened
 	}
 
 	dbFile, err := filepath.Abs(filepath.Join(c.path, "checksum.db"))
-
 	if err != nil {
+		c.logger.Error("Open: failed to resolve db path", err, slog.String("path", c.path))
 		return err
 	}
 
-	// ensure the path exist
+	c.logger.Info("Open: opening BoltDB", slog.String("file", dbFile))
+
+	// ensure the path exists
 	if err = os.MkdirAll(filepath.Dir(dbFile), 0700); err != nil {
+		c.logger.Error("Open: failed to create db dir", err, slog.String("dir", filepath.Dir(dbFile)))
 		return err
 	}
 
 	c.db, err = bbolt.Open(dbFile, 0600, nil)
 	if err != nil {
+		c.logger.Error("Open: bbolt.Open failed", err, slog.String("file", dbFile))
 		return err
 	}
-	return c.db.Update(func(tx *bbolt.Tx) error {
+
+	err = c.db.Update(func(tx *bbolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(c.bucket))
 		return err
 	})
+	if err != nil {
+		c.logger.Error("Open: failed to create bucket", err, slog.String("bucket", c.bucket))
+		return err
+	}
+
+	c.logger.Info("Open: ready", slog.String("file", dbFile), slog.String("bucket", c.bucket))
+	return nil
 }
 
 // Put stores value under key. Returns ErrEmptyKey for empty keys and
@@ -133,7 +179,9 @@ func (c *BoltChecksumIndex[T]) Put(key string, value T) error {
 		return ErrDatabaseNotOpened
 	}
 
-	return c.db.Update(func(tx *bbolt.Tx) error {
+	c.logger.Debug("Put", slog.String("key", key))
+
+	err := c.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(c.bucket))
 		if bucket == nil {
 			return ErrBucketNotFound
@@ -146,6 +194,10 @@ func (c *BoltChecksumIndex[T]) Put(key string, value T) error {
 
 		return bucket.Put([]byte(key), data)
 	})
+	if err != nil {
+		c.logger.Error("Put: failed", err, slog.String("key", key))
+	}
+	return err
 }
 
 // Get retrieves the value stored under key. Returns ErrKeyNotFound when the
@@ -156,6 +208,8 @@ func (c *BoltChecksumIndex[T]) Get(key string) (T, error) {
 	if c.db == nil {
 		return zero, ErrDatabaseNotOpened
 	}
+
+	c.logger.Debug("Get", slog.String("key", key))
 
 	var result T
 
@@ -179,16 +233,93 @@ func (c *BoltChecksumIndex[T]) Get(key string) (T, error) {
 		return nil
 	})
 
+	if err != nil && !errors.Is(err, ErrKeyNotFound) {
+		c.logger.Error("Get: failed", err, slog.String("key", key))
+	}
 	return result, err
+}
+
+func (c *BoltChecksumIndex[T]) GetAll() ([]string, error) {
+	var zero []string
+
+	if c.db == nil {
+		return zero, ErrDatabaseNotOpened
+	}
+
+	result := make([]string, 0)
+
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(c.bucket))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+
+		err := bucket.ForEach(func(k, v []byte) error {
+			result = append(result, string(k))
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return result, err
+}
+
+func (c *BoltChecksumIndex[T]) PutAll(data []KeyValue[T]) error {
+	if c.db == nil {
+		return ErrDatabaseNotOpened
+	}
+
+	for _, val := range data {
+		err := c.Put(val.Key, val.Value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Delete removes the entry stored under key. Returns ErrEmptyKey for empty
+// keys, ErrDatabaseNotOpened if Open has not been called, and ErrKeyNotFound
+// if the key does not exist in the bucket.
+func (c *BoltChecksumIndex[T]) Delete(key string) error {
+	if key == "" {
+		return ErrEmptyKey
+	}
+	if c.db == nil {
+		return ErrDatabaseNotOpened
+	}
+
+	c.logger.Debug("Delete", slog.String("key", key))
+
+	err := c.db.Update(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(c.bucket))
+		if bucket == nil {
+			return ErrBucketNotFound
+		}
+		if bucket.Get([]byte(key)) == nil {
+			return ErrKeyNotFound
+		}
+		return bucket.Delete([]byte(key))
+	})
+	if err != nil && !errors.Is(err, ErrKeyNotFound) {
+		c.logger.Error("Delete: failed", err, slog.String("key", key))
+	}
+	return err
 }
 
 // CleanUp closes the underlying bbolt database. It is safe to call multiple
 // times; subsequent calls are no-ops.
 func (c *BoltChecksumIndex[T]) CleanUp() {
-	if c.db != nil {
-		if err := c.db.Close(); err != nil {
-			c.logger.Error("Error while closing", err)
-		}
-		c.db = nil
+	if c.db == nil {
+		return
 	}
+	c.logger.Info("CleanUp: closing BoltDB")
+	if err := c.db.Close(); err != nil {
+		c.logger.Error("CleanUp: error closing database", err)
+	}
+	c.db = nil
+	c.logger.Info("CleanUp: database closed")
 }
