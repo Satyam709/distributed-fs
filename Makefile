@@ -4,7 +4,7 @@
 .PHONY: fmt-check go-fmt-check pb-fmt-check
 .PHONY: lint go-lint pb-lint
 .PHONY: check-tools run-cluster demo
-proto-gen: check-tools     # regenerate all pb.go files from protos
+proto-gen: check-buf     # regenerate all pb.go files from protos
 	buf generate
 build-storage:   # build storage node binary
 	go build -o bin/storage ./storage/cmd/main.go
@@ -28,10 +28,12 @@ define check_tool
 endef
 
 # checks if required tools are installed
-check-tools:
-	$(call check_tool,golangci-lint)
+check-buf:
 	$(call check_tool,buf)
- 
+
+check-golangci-lint:
+	$(call check_tool,golangci-lint)
+
 fmt: go-fmt pb-fmt
 
 go-fmt:
@@ -52,7 +54,7 @@ go-fmt-check:
 pb-fmt-check:
 	buf format --diff --exit-code
 
-lint: check-tools go-lint pb-lint
+lint: check-golangci-lint check-buf go-lint pb-lint
 
 go-lint:
 	golangci-lint run ./...

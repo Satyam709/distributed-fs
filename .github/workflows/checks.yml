@@ -32,11 +32,6 @@ jobs:
       - name: Lint proto
         run: make pb-lint
 
-      # skip for now
-      # - name: Breaking change check (PR only)
-      #   if: github.event_name == 'pull_request'
-      #   run: buf breaking --against '.git#branch=main'
-
       - name: Generate proto code
         run: make proto-gen
 
