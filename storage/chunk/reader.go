@@ -73,7 +73,7 @@ func NewChunkReader(chunkId string, s store.Store, frameSize int) (*ChunkReader,
 	}
 
 	logger := logging.NewCLogger()
-	logger.Logger = *logger.Logger.With(
+	logger.Logger = *logger.With(
 		slog.String("component", "ChunkReader"),
 		slog.String("chunkId", chunkId),
 	)

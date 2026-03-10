@@ -62,7 +62,11 @@ var uploadCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("Failed to connect to storage: %v", err)
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				log.Printf("failed to close conn")
+			}
+		}()
 		storageClient := pb_storage.NewStorageServiceClient(conn)
 
 		// 4. ParallelUploader: Use concurrency limit from Config

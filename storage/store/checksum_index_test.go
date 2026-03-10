@@ -22,7 +22,7 @@ func tempDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "checksum_index_test_*")
 	require.NoError(t, err, "failed to create temp dir")
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
 }
 

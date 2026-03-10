@@ -15,7 +15,7 @@ import (
 
 func main() {
 	logger := logging.NewCLogger()
-	logger.Logger = *logger.Logger.With(slog.String("component", "main"))
+	logger.Logger = *logger.With(slog.String("component", "main"))
 
 	logger.Info("distributed-fs storage node starting")
 

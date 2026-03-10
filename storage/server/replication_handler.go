@@ -32,7 +32,7 @@ func NewReplicationServer(s store.Store, logger *logging.CLogger) (*ReplicationS
 	if logger != nil {
 		l = logger
 	}
-	l.Logger = *l.Logger.With(slog.String("component", "ReplicationServer"))
+	l.Logger = *l.With(slog.String("component", "ReplicationServer"))
 	return &ReplicationServer{Store: s, logger: l}, nil
 }
 

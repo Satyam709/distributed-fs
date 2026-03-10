@@ -185,7 +185,7 @@ func TestChunkWriter_WriteAfterAbort(t *testing.T) {
 	require.NoError(t, err)
 	w.Abort()
 	err = w.Write([]byte("should be rejected"))
-	assert.ErrorIs(t, err, WriterClosed, "Write after Abort must be rejected")
+	assert.ErrorIs(t, err, ErrWriterClosed, "Write after Abort must be rejected")
 }
 
 // TestChunkWriter_FinalizeAfterAbort verifies that Finalize after Abort
@@ -202,7 +202,7 @@ func TestChunkWriter_FinalizeAfterAbort(t *testing.T) {
 	w.Abort()
 	cs := sha256.Sum256(payload)
 	err = w.Finalize(cs[:])
-	assert.ErrorIs(t, err, OperationAborted)
+	assert.ErrorIs(t, err, ErrOperationAborted)
 	assert.False(t, s.Exists(testChunkId), "chunk must not be committed after Abort+Finalize")
 }
 

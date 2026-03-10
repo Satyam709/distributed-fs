@@ -123,7 +123,7 @@ func NewDiskStore(opts ...DiskStoreOptions) (*DiskStore, error) {
 		totalSpace: DEFAULT_STORE_SIZE,
 		logger:     logging.NewCLogger(),
 	}
-	ds.logger.Logger = *ds.logger.Logger.With(slog.String("component", "DiskStore"))
+	ds.logger.Logger = *ds.logger.With(slog.String("component", "DiskStore"))
 
 	for _, opt := range opts {
 		opt(ds)

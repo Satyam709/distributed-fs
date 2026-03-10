@@ -120,7 +120,7 @@ func NewChecksumIndexBoltDB[T any](codec Codec[T], opts ...BoltChecksumIndexOpts
 
 	WithDefaultPath[T]()(boltStore)
 
-	boltStore.logger.Logger = *boltStore.logger.Logger.With(slog.String("component", "BoltChecksumIndex"))
+	boltStore.logger.Logger = *boltStore.logger.With(slog.String("component", "BoltChecksumIndex"))
 
 	for _, opt := range opts {
 		opt(boltStore)

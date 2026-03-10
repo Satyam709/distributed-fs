@@ -1,10 +1,11 @@
 package chunker
 
 import (
-	"github.com/google/uuid"
-	"github.com/satyam709/distributed-fs/internal/checksum" // Use your internal helper
 	"math"
 	"os"
+
+	"github.com/google/uuid"
+	"github.com/satyam709/distributed-fs/internal/checksum" // Use your internal helper
 )
 
 type ChunkDescriptor struct {

@@ -54,10 +54,13 @@ go-fmt-check:
 pb-fmt-check:
 	buf format --diff --exit-code
 
-lint: check-golangci-lint check-buf go-lint pb-lint
+lint: go-lint pb-lint
 
-go-lint:
+go-lint: check-golangci-lint
 	golangci-lint run ./...
 
-pb-lint:
+pb-lint: check-buf
 	buf lint
+
+install-golangci-lint:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3

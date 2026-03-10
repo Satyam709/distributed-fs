@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 
@@ -35,7 +36,11 @@ func (u *ParallelUploader) Upload(ctx context.Context, filePath string, descript
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("upload client: failed to close file")
+		}
+	}()
 
 	var wg sync.WaitGroup
 	// Semaphore-limited goroutine pool.
