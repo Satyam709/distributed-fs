@@ -58,7 +58,7 @@ var uploadCmd = &cobra.Command{
 		}
 
 		// 3. Storage Connection (Using dummy address for now)
-		conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient("localhost:4000", grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			log.Fatalf("Failed to connect to storage: %v", err)
 		}
@@ -129,5 +129,8 @@ func main() {
 	rootCmd.AddCommand(uploadCmd)
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(listCmd)
-	rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		log.Fatal("cli error while executing: ", err)
+	}
 }

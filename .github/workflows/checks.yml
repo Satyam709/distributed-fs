@@ -27,10 +27,10 @@ jobs:
       # -------- PROTO CHECKS --------
 
       - name: Check proto formatting
-        run: buf format --diff --exit-code
+        run: make pb-fmt-check
 
       - name: Lint proto
-        run: buf lint
+        run: make pb-lint
 
       # skip for now
       # - name: Breaking change check (PR only)
@@ -38,9 +38,17 @@ jobs:
       #   run: buf breaking --against '.git#branch=main'
 
       - name: Generate proto code
-        run: buf generate
+        run: make proto-gen
 
       # -------- GO CHECKS --------
+
+      - name: Check Go formatting
+        run: make go-fmt-check
+
+      - name: Go Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
 
       - name: Download Go deps
         run: go mod tidy

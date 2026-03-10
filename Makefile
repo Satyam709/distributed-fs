@@ -1,9 +1,14 @@
-.PHONY: lint go-fmt pb-fmt fmt lint go-lint pb-lint check-tools proto-gen
+.PHONY: proto-gen build-storage build-metadata build-client build-all
+.PHONY: test-storage test-all
+.PHONY: fmt go-fmt pb-fmt
+.PHONY: fmt-check go-fmt-check pb-fmt-check
+.PHONY: lint go-lint pb-lint
+.PHONY: check-tools run-cluster demo
 proto-gen: check-tools     # regenerate all pb.go files from protos
 	buf generate
 build-storage:   # build storage node binary
 	go build -o bin/storage ./storage/cmd/main.go
-build-metadata:  # build metadata node binary  
+build-metadata:  # build metadata node binary
 build-client:    # build client binary
 	go build -o bin/client ./client/cmd/main.go
 build-all: 	build-storage build-client       # all three
@@ -27,14 +32,7 @@ check-tools:
 	$(call check_tool,golangci-lint)
 	$(call check_tool,buf)
  
-lint: check-tools go-lint pb-lint
-
-go-lint:
-	golangci-lint run ./...
-
-pb-lint:
-	buf format --diff --exit-code
-	buf lint
+fmt: go-fmt pb-fmt
 
 go-fmt:
 	go fmt ./...
@@ -42,4 +40,22 @@ go-fmt:
 pb-fmt:
 	buf format -w
 
-fmt: go-fmt pb-fmt
+fmt-check: go-fmt-check pb-fmt-check
+
+go-fmt-check:
+	@if [ -n "$$(gofmt -l .)" ]; then \
+		echo "Go code is not formatted. Run 'make go-fmt' to fix."; \
+		gofmt -d .; \
+		exit 1; \
+	fi
+
+pb-fmt-check:
+	buf format --diff --exit-code
+
+lint: check-tools go-lint pb-lint
+
+go-lint:
+	golangci-lint run ./...
+
+pb-lint:
+	buf lint
