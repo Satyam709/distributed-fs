@@ -2,15 +2,18 @@
 proto-gen: check-tools     # regenerate all pb.go files from protos
 	buf generate
 build-storage:   # build storage node binary
-	go build -o bin/storage ./storage/cmd
+	go build -o bin/storage ./storage/cmd/main.go
 build-metadata:  # build metadata node binary  
 build-client:    # build client binary
-build-all:       # all three
+	go build -o bin/client ./client/cmd/main.go
+build-all: 	build-storage build-client       # all three
 test-storage:    # run storage package tests
+
 test-all:        # all tests
 	go test -count=1 ./...
 run-cluster:     # start 1 metadata + 4 storage nodes locally
 demo:            # run demo script
+	./scripts/test_upload_download.sh
 
 # func to check for a specific tool
 define check_tool
