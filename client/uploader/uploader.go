@@ -99,7 +99,7 @@ func (u *ParallelUploader) uploadChunk(ctx context.Context, file *os.File, desc 
 			ChunkId:  desc.ChunkID,
 			FileId:   desc.FileID,
 			Data:     buffer[i:end],
-			Checksum: dataChecksum,
+			Checksum: []byte(dataChecksum),
 			IsLast:   end == len(buffer),
 		}
 		
