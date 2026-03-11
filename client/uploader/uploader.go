@@ -3,13 +3,15 @@ package uploader
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 
 	"github.com/satyam709/distributed-fs/client/chunker"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
-	"github.com/satyam709/distributed-fs/internal/checksum"
 )
 
 // ParallelUploader orchestrates the full upload of one file.
@@ -34,7 +36,11 @@ func (u *ParallelUploader) Upload(ctx context.Context, filePath string, descript
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("upload client: failed to close file")
+		}
+	}()
 
 	var wg sync.WaitGroup
 	// Semaphore-limited goroutine pool.
@@ -60,7 +66,7 @@ func (u *ParallelUploader) Upload(ctx context.Context, filePath string, descript
 
 	// Check if any goroutines reported errors
 	if len(errChan) > 0 {
-		return <-errChan 
+		return <-errChan
 	}
 
 	return nil
@@ -79,7 +85,7 @@ func (u *ParallelUploader) uploadChunk(ctx context.Context, file *os.File, desc 
 	}
 
 	// Compute checksum before upload.
-	dataChecksum := checksum.Compute(buffer)
+	dataChecksum := sha256.New()
 
 	// Thin wrapper around PutChunk gRPC.
 	stream, err := u.storageClient.PutChunk(ctx)
@@ -93,21 +99,28 @@ func (u *ParallelUploader) uploadChunk(ctx context.Context, file *os.File, desc 
 		end := i + frameSize
 		end = min(end, len(buffer))
 
-		fmt.Println("frame no : ",i/32768,"chunk index : ", desc.ChunkIndex)
+		fmt.Println("frame no : ", i/32768, "chunk index : ", desc.ChunkIndex)
+		frame := buffer[i:end]
+
+		// compute the running hash for frames
+		n, err := dataChecksum.Write(frame)
+		if err != nil || n != len(frame) {
+			return errors.New("uploadChunkClient: running checksum failed")
+		}
 
 		req := &pb_storage.PutChunkRequest{
 			ChunkId:  desc.ChunkID,
 			FileId:   desc.FileID,
-			Data:     buffer[i:end],
-			Checksum: []byte(dataChecksum),
+			Data:     frame,
+			Checksum: dataChecksum.Sum(nil),
 			IsLast:   end == len(buffer),
 		}
-		
+
 		if err := stream.Send(req); err != nil {
 			return err
 		}
 	}
-	
+
 	_, err = stream.CloseAndRecv()
 	fmt.Println("```````````````````````````````````````````````````````````````````````````````````````````````````")
 	return err

@@ -40,7 +40,11 @@ func (d *ParallelDownloader) Download(ctx context.Context, outputPath string, to
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() {
+		if err := outFile.Close(); err != nil {
+			fmt.Printf("failed to close")
+		}
+	}()
 
 	if err := outFile.Truncate(totalSize); err != nil {
 		return fmt.Errorf("failed to pre-allocate file: %w", err)
@@ -95,7 +99,9 @@ func (d *ParallelDownloader) fetchChunk(ctx context.Context, addr string, chunkI
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	client := pb_storage.NewStorageServiceClient(conn)
 	stream, err := client.GetChunk(ctx, &pb_storage.GetChunkRequest{ChunkId: chunkID})

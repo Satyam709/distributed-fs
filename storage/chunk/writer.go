@@ -16,8 +16,8 @@ import (
 
 // Package-level aliases so existing call-sites (tests, server) keep compiling.
 var (
-	OperationAborted    = errors.New("op has been aborted")
-	WriterClosed        = errors.New("write over a closed writer")
+	ErrOperationAborted = errors.New("op has been aborted")
+	ErrWriterClosed     = errors.New("write over a closed writer")
 	ErrChecksumMismatch = dfserrors.ErrChecksumMismatch
 )
 
@@ -40,7 +40,7 @@ func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
 		return nil, errors.New("ChunkWriter: store must not be nil")
 	}
 	logger := logging.NewCLogger()
-	logger.Logger = *logger.Logger.With(
+	logger.Logger = *logger.With(
 		slog.String("component", "ChunkWriter"),
 		slog.String("chunkId", chunkId),
 	)
@@ -74,7 +74,7 @@ func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
 func (cw *ChunkWriter) Write(data []byte) error {
 	if cw.isDone {
 		cw.logger.Debug("Write called on closed writer")
-		return WriterClosed
+		return ErrWriterClosed
 	}
 
 	n, err := cw.file.Write(data)
@@ -102,7 +102,7 @@ func (cw *ChunkWriter) Write(data []byte) error {
 // Calls Aborts if any arror
 func (cw *ChunkWriter) Finalize(expectedChecksum []byte) (err error) {
 	if cw.isDone {
-		return OperationAborted
+		return ErrOperationAborted
 	}
 
 	computed := cw.hasher.Sum(nil)

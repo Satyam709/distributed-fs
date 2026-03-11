@@ -12,41 +12,82 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # needed for buf breaking
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
+        uses: actions/setup-go@v6
+        with: 
+          go-version-file: go.mod
+          cache: true
 
       - name: Setup Buf
-        uses: bufbuild/buf-setup-action@v1
-
-      # -------- PROTO CHECKS --------
-
-      - name: Check proto formatting
-        run: buf format --diff --exit-code
-
-      - name: Lint proto
-        run: buf lint
-
-      # skip for now
-      # - name: Breaking change check (PR only)
-      #   if: github.event_name == 'pull_request'
-      #   run: buf breaking --against '.git#branch=main'
-
-      - name: Generate proto code
-        run: buf generate
-
-      # -------- GO CHECKS --------
-
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ github.token }}
+      
       - name: Download Go deps
-        run: go mod tidy
+        run: go mod download
 
       - name: Build
         run: make build-all
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with: 
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ github.token }}
+      
+      - name: Download Go deps
+        run: go mod download
+      
+      - name: Check proto formatting
+        run: make pb-fmt-check
+
+      - name: Lint proto
+        run: make pb-lint
+
+      - name: Check Go formatting
+        run: make go-fmt-check
+      
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.3
+          args: --timeout=5m
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with: 
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ github.token }}
+      
+      - name: Download Go deps
+        run: go mod download
+
       - name: Test
         run: make test-all
+
+
