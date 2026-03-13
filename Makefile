@@ -7,11 +7,12 @@
 proto-gen: check-buf     # regenerate all pb.go files from protos
 	buf generate
 build-storage:   # build storage node binary
-	go build -o bin/storage ./storage/cmd/main.go
+	go build -o bin/storage ./storage/cmd
 build-metadata:  # build metadata node binary
+	go build -o bin/metadata ./metadata/cmd
 build-client:    # build client binary
-	go build -o bin/client ./client/cmd/main.go
-build-all: 	build-storage build-client       # all three
+	go build -o bin/client ./client/cmd
+build-all: 	build-storage build-client build-metadata      # all three
 test-storage:    # run storage package tests
 
 test-all:        # all tests
