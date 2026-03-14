@@ -15,7 +15,7 @@ type MetadataFSM struct {
 }
 
 func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
-	
+
 	return nil
 }
 

@@ -1,0 +1,5 @@
+syntax = "proto3";
+package proto.metadata.v1;
+
+// path for generated go-package
+option go_package = "github.com/satyam709/gen/pb_meta";
