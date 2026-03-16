@@ -1,6 +1,10 @@
 package fsm
 
-import "github.com/hashicorp/raft"
+import (
+	"time"
+
+	"github.com/hashicorp/raft"
+)
 
 type MetadataCmdType int
 
@@ -32,33 +36,43 @@ type MetadataCommand struct {
 	Payload []byte
 }
 type CommandRegisterNode struct {
-	NodeID    string `json:"node_id"`
-	Address   string `json:"address"`
-	FreeSpace string `json:"freespace"`
+	NodeID     string    `json:"node_id"`
+	Address    string    `json:"address"`
+	FreeSpace  uint64    `json:"freespace"`
+	ChunkCount uint64    `json:"chunkcount"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type CommandDeregisterNode struct {
-	NodeID string `json:"node_id"`
+	NodeID    string    `json:"node_id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CommandMarkNodeDead struct {
-	NodeID string `json:"node_id"`
+	NodeID    string    `json:"node_id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
+
 type CommandMarkNodeAlive struct {
-	NodeID string `json:"node_id"`
+	NodeID    string    `json:"node_id"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CommandUpdateNodeSpace struct {
-	NodeID string `json:"node_id"`
+	NodeID     string    `json:"node_id"`
+	FreeSpace  uint64    `json:"freespace"`
+	ChunkCount uint64    `json:"chunkcount"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // FILE commands
 type CommandCreateFile struct {
-	FileID   string   `json:"file_id"`
-	FileName string   `json:"filename"`
-	ChunkIDs []string `json:"chunk_ids"`
-	FileSize uint64   `json:"filesize"`
-	Checksum []byte   `json:"checksum"`
+	FileID    string    `json:"file_id"`
+	FileName  string    `json:"filename"`
+	ChunkIDs  []string  `json:"chunk_ids"`
+	FileSize  uint64    `json:"filesize"`
+	Checksum  []byte    `json:"checksum"`
+	CreatedAt time.Time `json:"created_at"`
 }
 type CommandCommitFile struct {
 	FileID   string `json:"file_id"`

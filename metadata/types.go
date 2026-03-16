@@ -15,9 +15,10 @@ const (
 type ChunkStatus string
 
 const (
-	ChunkStatusAllocated ChunkStatus = "allocated"
-	ChunkStatusComplete  ChunkStatus = "complete"
-	ChunkStatusLost      ChunkStatus = "lost"
+	ChunkStatusRequestAllocation ChunkStatus = "allocated"
+	ChunkStatusAllocated         ChunkStatus = "allocated"
+	ChunkStatusComplete          ChunkStatus = "complete"
+	ChunkStatusLost              ChunkStatus = "lost"
 )
 
 // NodeStatus represents the health state of a storage node.
@@ -45,8 +46,9 @@ const (
 type FileRecord struct {
 	FileID    string     `json:"file_id"`
 	Filename  string     `json:"filename"`
-	FileSize  int64      `json:"file_size"`
-	ChunkSize int64      `json:"chunk_size"`
+	FileSize  uint64     `json:"file_size"`
+	ChunkSize uint64     `json:"chunk_size"`
+	CheckSum  []byte     `json:"checksum"`
 	ChunkIDs  []string   `json:"chunk_ids"`
 	Status    FileStatus `json:"status"`
 	CreatedAt time.Time  `json:"created_at"`
@@ -73,10 +75,11 @@ type NodeEntry struct {
 	NodeID       string     `json:"node_id"`
 	Address      string     `json:"address"`
 	Status       NodeStatus `json:"status"`
-	FreeSpace    int64      `json:"free_space"`
-	ChunkCount   int64      `json:"chunk_count"`
+	FreeSpace    uint64     `json:"free_space"`
+	ChunkCount   uint64     `json:"chunk_count"`
 	LastSeen     time.Time  `json:"-"` // in-memory only, not persisted via Raft
 	RegisteredAt time.Time  `json:"registered_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 // RepairJob represents one unit of chunk-repair work.
