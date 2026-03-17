@@ -91,7 +91,10 @@ type CommandCommitChunk struct {
 }
 
 type CommandEvictChunkFromNode struct {
-	ChunkID string `json:"chunk_id"`
+	ChunkID   string    `json:"chunk_id"`
+	NodeID    string    `json:"node_id"`
+	EvictedAt time.Time `json:"evicted_at"`
+	Reason    string    `json:"reason"`
 }
 
 type CommandMarkChunkLost struct {
@@ -100,11 +103,17 @@ type CommandMarkChunkLost struct {
 
 // JOBS
 
-type ComamndCreateRepairJob struct {
+type CommandCreateRepairJob struct {
+	JobID     string    `json:"job_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-type ComamndUpdateRepairJob struct {
-	JobID string `json:"job_id"`
+type CommandUpdateRepairJob struct {
+	JobID     string       `json:"job_id"`
+	Status    RepairStatus `json:"status"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	Attempts  uint64       `json:"attempts"`
+	Error     string       `json:"error"`
 }
 
 // Propose proposes the cmd to the given raft instance

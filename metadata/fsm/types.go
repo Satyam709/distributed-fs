@@ -1,4 +1,4 @@
-package metadata
+package fsm
 
 import "time"
 
@@ -62,7 +62,7 @@ type ChunkRecord struct {
 	FileID     string      `json:"file_id"`
 	ChunkIndex int         `json:"chunk_index"`
 	Size       int64       `json:"size"`
-	Checksum   string      `json:"checksum"`
+	Checksum   []byte      `json:"checksum"`
 	Replicas   []string    `json:"replicas"` // node IDs holding this chunk
 	Status     ChunkStatus `json:"status"`
 	Version    int64       `json:"version"`
@@ -86,10 +86,11 @@ type NodeEntry struct {
 type RepairJob struct {
 	JobID        string       `json:"job_id"`
 	ChunkID      string       `json:"chunk_id"`
+	Error        string       `json:"error"`
 	SourceNodeID string       `json:"source_node_id"`
 	TargetNodeID string       `json:"target_node_id"`
 	Status       RepairStatus `json:"status"`
-	Attempts     int          `json:"attempts"`
+	Attempts     uint64       `json:"attempts"`
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 }
