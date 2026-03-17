@@ -41,7 +41,7 @@ func NewStorageServer(s store.Store, logger *logging.CLogger, r ...Replicator) (
 	if logger != nil {
 		l = logger
 	}
-	l.Logger = *l.With(slog.String("component", "StorageServer"))
+	l = l.With(slog.String("component", "StorageServer"))
 	var repl Replicator
 	if len(r) > 0 {
 		repl = r[0]

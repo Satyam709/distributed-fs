@@ -13,7 +13,7 @@ import (
 )
 
 type MetadataFSM struct {
-	logger            logging.CLogger
+	logger            *logging.CLogger
 	fiMutex           sync.RWMutex
 	FileIndex         map[string]*metadata.FileRecord
 	crMutex           sync.RWMutex
@@ -25,9 +25,9 @@ type MetadataFSM struct {
 }
 
 var (
-	NodeNotFound  error = errors.New("node does not exist")
-	FileNotFound  error = errors.New("file does not exist")
-	ChunkNotFound error = errors.New("chunk does not exist")
+	ErrNodeNotFound  error = errors.New("node does not exist")
+	ErrFileNotFound  error = errors.New("file does not exist")
+	ErrChunkNotFound error = errors.New("chunk does not exist")
 )
 
 func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
@@ -205,14 +205,14 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 		if !ok {
 			mfsm.crMutex.Unlock()
 			err := errors.New("CmdCommitFile: chunk validation failed : chunk not found")
-			logging.LogError(&mfsm.logger.Logger, "CmdCommitFile failed", err, "chunk_id", cid)
+			mfsm.logger.Error("CmdCommitFile failed", err, "chunk_id", cid)
 			return err
 		}
 
 		if ck.Status != metadata.ChunkStatusComplete {
 			mfsm.crMutex.Unlock()
 			err := errors.New("CmdCommitFile: chunk validation failed : chunk not commited")
-			logging.LogError(&mfsm.logger.Logger, "CmdCommitFile failed", err, "chunk_id", cid)
+			mfsm.logger.Error("CmdCommitFile failed", err, "chunk_id", cid)
 			return err
 		}
 	}
@@ -221,6 +221,7 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 	mfsm.fiMutex.Lock()
 	defer mfsm.fiMutex.Unlock()
 	file.Status = metadata.FileStatusComplete
+	mfsm.logger.Debug("Commited file", "id", file.FileID)
 	return nil
 }
 
@@ -246,7 +247,7 @@ func (mfsm *MetadataFSM) getNodeRegistryForID(nodeID string) (*metadata.NodeEntr
 	defer mfsm.nrMutex.RUnlock()
 	node, ok := mfsm.NodeRegistry[nodeID]
 	if !ok {
-		return nil, NodeNotFound
+		return nil, ErrNodeNotFound
 	}
 	return node, nil
 }
@@ -256,7 +257,7 @@ func (mfsm *MetadataFSM) getFileRegistryForID(fileID string) (*metadata.FileReco
 	defer mfsm.fiMutex.RUnlock()
 	file, ok := mfsm.FileIndex[fileID]
 	if !ok {
-		return nil, FileNotFound
+		return nil, ErrFileNotFound
 	}
 	return file, nil
 }

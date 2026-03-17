@@ -39,8 +39,7 @@ func NewChunkWriter(chunkId string, store store.Store) (*ChunkWriter, error) {
 	if store == nil {
 		return nil, errors.New("ChunkWriter: store must not be nil")
 	}
-	logger := logging.NewCLogger()
-	logger.Logger = *logger.With(
+	logger := logging.NewCLogger().With(
 		slog.String("component", "ChunkWriter"),
 		slog.String("chunkId", chunkId),
 	)

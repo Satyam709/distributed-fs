@@ -46,8 +46,7 @@ func NewPeerDialer(opts ...grpc.DialOption) *PeerDialer {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(defaultKeepalive),
 	}
-	l := logging.NewCLogger()
-	l.Logger = *l.With(slog.String("component", "PeerDialer"))
+	l := logging.NewCLogger().With(slog.String("component", "PeerDialer"))
 	return &PeerDialer{
 		conns:  make(map[string]*grpc.ClientConn),
 		opts:   append(base, opts...),
