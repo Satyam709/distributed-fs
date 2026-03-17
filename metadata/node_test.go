@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"fmt"
-	"io"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"github.com/satyam709/distributed-fs/metadata/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,18 +28,24 @@ func nextAddr() string {
 	return fmt.Sprintf("127.0.0.1:%d", port)
 }
 
-// --- testFSM: minimal raft.FSM implementation for tests ---
+// ---: minimal raft.FSM implementation for tests ---
 
-type testFSM struct{}
+// type struct{}
 
-func (f *testFSM) Apply(log *raft.Log) interface{}        { return nil }
-func (f *testFSM) Snapshot() (raft.FSMSnapshot, error)   { return &testSnapshot{}, nil }
-func (f *testFSM) Restore(rc io.ReadCloser) error        { return rc.Close() }
+// func (f *testFSM) Apply(log *raft.Log) interface{}        { return nil }
+// func (f *testFSM) Snapshot() (raft.FSMSnapshot, error)   { return &testSnapshot{}, nil }
+// func (f *testFSM) Restore(rc io.ReadCloser) error        { return rc.Close() }
 
-type testSnapshot struct{}
+// type testSnapshot struct{}
 
-func (s *testSnapshot) Persist(sink raft.SnapshotSink) error { return sink.Close() }
-func (s *testSnapshot) Release()                              {}
+// func (s *testSnapshot) Persist(sink raft.SnapshotSink) error { return sink.Close() }
+// func (s *testSnapshot) Release()                              {}
+
+func generateMetaDataStub() *fsm.MetadataFSM {
+	return fsm.NewEmptyMetadataFsm(nil)
+}
+
+var testFSM = generateMetaDataStub()
 
 // --- helpers ---
 
@@ -65,7 +71,7 @@ func setupSingleNodeRaft(t *testing.T) *raft.Raft {
 
 	cfg := RaftConfig{
 		Config:      makeNodeConfig(dir, nextAddr()),
-		FSM:         &testFSM{},
+		FSM:         testFSM,
 		LogStore:    logStore,
 		StableStore: logStore,
 	}
@@ -91,9 +97,9 @@ func setupRaftWithoutBootstrap(t *testing.T) *raft.Raft {
 	require.NoError(t, err)
 
 	raftCfg := raft.DefaultConfig()
-	raftCfg.LocalID          = "node-noboot"
+	raftCfg.LocalID = "node-noboot"
 	raftCfg.HeartbeatTimeout = 500 * time.Millisecond
-	raftCfg.ElectionTimeout  = 500 * time.Millisecond
+	raftCfg.ElectionTimeout = 500 * time.Millisecond
 
 	snapshotStore, err := raft.NewFileSnapshotStore(dir, 1, nil)
 	require.NoError(t, err)
@@ -101,7 +107,7 @@ func setupRaftWithoutBootstrap(t *testing.T) *raft.Raft {
 	transport, err := raft.NewTCPTransport(nextAddr(), nil, 3, 5*time.Second, nil)
 	require.NoError(t, err)
 
-	node, err := raft.NewRaft(raftCfg, &testFSM{}, logStore, logStore, snapshotStore, transport)
+	node, err := raft.NewRaft(raftCfg, testFSM, logStore, logStore, snapshotStore, transport)
 	require.NoError(t, err)
 
 	// deliberately NOT calling BootstrapCluster — node will never get a leader
@@ -160,7 +166,7 @@ func TestNewRaftNode_Success(t *testing.T) {
 
 	cfg := RaftConfig{
 		Config:      makeNodeConfig(dir, nextAddr()),
-		FSM:         &testFSM{},
+		FSM:         testFSM,
 		LogStore:    logStore,
 		StableStore: logStore,
 	}
@@ -169,29 +175,29 @@ func TestNewRaftNode_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, node)
 
-	t.Cleanup(func() { 
-		node.Shutdown() 
+	t.Cleanup(func() {
+		node.Shutdown()
 		logStore.Close()
 	})
 }
 
 func TestNewRaftNode_InvalidAddr(t *testing.T) {
-    dir := t.TempDir()
+	dir := t.TempDir()
 
-    logStore, err := store.NewBoltStore(filepath.Join(dir, "raft.db"))
-    require.NoError(t, err)
-    t.Cleanup(func() { logStore.Close() }) // registered immediately — runs regardless of what happens next
+	logStore, err := store.NewBoltStore(filepath.Join(dir, "raft.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { logStore.Close() }) // registered immediately — runs regardless of what happens next
 
-    cfg := RaftConfig{
-        Config:      makeNodeConfig(dir, "not-a-valid-addr"),
-        FSM:         &testFSM{},
-        LogStore:    logStore,
-        StableStore: logStore,
-    }
+	cfg := RaftConfig{
+		Config:      makeNodeConfig(dir, "not-a-valid-addr"),
+		FSM:         testFSM,
+		LogStore:    logStore,
+		StableStore: logStore,
+	}
 
-    node, err := NewRaftNode(cfg)
-    assert.Error(t, err)
-    assert.Nil(t, node)
+	node, err := NewRaftNode(cfg)
+	assert.Error(t, err)
+	assert.Nil(t, node)
 }
 
 func TestBootstrap_SkippedOnRestart(t *testing.T) {
@@ -208,7 +214,7 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	store1 := newStore()
 	node1, err := NewRaftNode(RaftConfig{
 		Config:      makeNodeConfig(dir, addr),
-		FSM:         &testFSM{},
+		FSM:         testFSM,
 		LogStore:    store1,
 		StableStore: store1,
 	})
@@ -230,7 +236,7 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 		store2 = newStore()
 		node2, err = NewRaftNode(RaftConfig{
 			Config:      makeNodeConfig(dir, addr),
-			FSM:         &testFSM{},
+			FSM:         testFSM,
 			LogStore:    store2,
 			StableStore: store2,
 		})

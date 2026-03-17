@@ -3,7 +3,7 @@ package fsm
 import (
 	"encoding/json"
 	"time"
-	
+
 	"github.com/hashicorp/raft"
 )
 

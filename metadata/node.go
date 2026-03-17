@@ -1,114 +1,114 @@
 package metadata
 
 import (
-    "fmt"
-    "net"
-    "time"
+	"fmt"
+	"net"
+	"time"
 
-    "github.com/hashicorp/raft"
+	"github.com/hashicorp/raft"
 )
 
 type RaftConfig struct {
-    Config      NodeConfig
-    FSM         raft.FSM
-    LogStore    raft.LogStore
-    StableStore raft.StableStore
+	Config      NodeConfig
+	FSM         raft.FSM
+	LogStore    raft.LogStore
+	StableStore raft.StableStore
 }
 
 func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
 
-    raftConfig := raft.DefaultConfig()
-    raftConfig.LocalID           = raft.ServerID(r.Config.NodeID)
-    raftConfig.HeartbeatTimeout  = r.Config.HeartbeatTimeout
-    raftConfig.ElectionTimeout   = r.Config.ElectionTimeout
-    raftConfig.SnapshotInterval  = r.Config.SnapshotInterval
-    raftConfig.SnapshotThreshold = r.Config.SnapshotThreshold
+	raftConfig := raft.DefaultConfig()
+	raftConfig.LocalID = raft.ServerID(r.Config.NodeID)
+	raftConfig.HeartbeatTimeout = r.Config.HeartbeatTimeout
+	raftConfig.ElectionTimeout = r.Config.ElectionTimeout
+	raftConfig.SnapshotInterval = r.Config.SnapshotInterval
+	raftConfig.SnapshotThreshold = r.Config.SnapshotThreshold
 
-    addr, err := net.ResolveTCPAddr("tcp", r.Config.RaftAddr)
-    if err != nil {
-        return nil, fmt.Errorf("resolve raft addr: %w", err)
-    }
+	addr, err := net.ResolveTCPAddr("tcp", r.Config.RaftAddr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve raft addr: %w", err)
+	}
 
-    transport, err := raft.NewTCPTransport(
-        r.Config.RaftAddr,
-        addr,
-        3,             // maxPool
-        10*time.Second, // timeout
-        nil,           // logger (nil = discard)
-    )
-    if err != nil {
-        return nil, fmt.Errorf("create transport: %w", err)
-    }
+	transport, err := raft.NewTCPTransport(
+		r.Config.RaftAddr,
+		addr,
+		3,              // maxPool
+		10*time.Second, // timeout
+		nil,            // logger (nil = discard)
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create transport: %w", err)
+	}
 
-    snapshotStore, err := raft.NewFileSnapshotStore(
-        r.Config.RaftDir,
-        r.Config.SnapshotRetain,
-        nil,
-    )
-    if err != nil {
-        return nil, fmt.Errorf("create snapshot store: %w", err)
-    }
+	snapshotStore, err := raft.NewFileSnapshotStore(
+		r.Config.RaftDir,
+		r.Config.SnapshotRetain,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create snapshot store: %w", err)
+	}
 
-    raftNode, err := raft.NewRaft(
-        raftConfig,
-        r.FSM,
-        r.LogStore,
-        r.StableStore,
-        snapshotStore,
-        transport,
-    )
-    if err != nil {
-        return nil, fmt.Errorf("create raft: %w", err)
-    }
+	raftNode, err := raft.NewRaft(
+		raftConfig,
+		r.FSM,
+		r.LogStore,
+		r.StableStore,
+		snapshotStore,
+		transport,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create raft: %w", err)
+	}
 
-    // Bootstrap — only on first startup
-    // hasExistingState checks the log/stable store for any prior state
-    hasState, err := raft.HasExistingState(r.LogStore, r.StableStore, snapshotStore)
-    if err != nil {
-        return nil, fmt.Errorf("check existing state: %w", err)
-    }
+	// Bootstrap — only on first startup
+	// hasExistingState checks the log/stable store for any prior state
+	hasState, err := raft.HasExistingState(r.LogStore, r.StableStore, snapshotStore)
+	if err != nil {
+		return nil, fmt.Errorf("check existing state: %w", err)
+	}
 
-    if !hasState {
-        servers := []raft.Server{
-            // always include yourself
-            {
-                ID:      raft.ServerID(r.Config.NodeID),
-                Address: transport.LocalAddr(),
-            },
-        }
+	if !hasState {
+		servers := []raft.Server{
+			// always include yourself
+			{
+				ID:      raft.ServerID(r.Config.NodeID),
+				Address: transport.LocalAddr(),
+			},
+		}
 
-        // add peers if this is a multi-node cluster
-        for id, addr := range r.Config.PeerAddrs {
-            servers = append(servers, raft.Server{
-                ID:      raft.ServerID(id),
-                Address: raft.ServerAddress(addr),
-            })
-        }
+		// add peers if this is a multi-node cluster
+		for id, addr := range r.Config.PeerAddrs {
+			servers = append(servers, raft.Server{
+				ID:      raft.ServerID(id),
+				Address: raft.ServerAddress(addr),
+			})
+		}
 
-        cfg := raft.Configuration{Servers: servers}
-        if err := raftNode.BootstrapCluster(cfg).Error(); err != nil {
-            return nil, fmt.Errorf("bootstrap cluster: %w", err)
-        }
-    }
+		cfg := raft.Configuration{Servers: servers}
+		if err := raftNode.BootstrapCluster(cfg).Error(); err != nil {
+			return nil, fmt.Errorf("bootstrap cluster: %w", err)
+		}
+	}
 
-    return raftNode, nil
+	return raftNode, nil
 }
 
 func IsLeader(r *raft.Raft) bool {
-    return r.State() == raft.Leader
+	return r.State() == raft.Leader
 }
 
 func LeaderAddress(r *raft.Raft) string {
-    return string(r.Leader())
+	return string(r.Leader())
 }
 
 func WaitForLeader(r *raft.Raft, timeout time.Duration) error {
-    deadline := time.Now().Add(timeout)
-    for time.Now().Before(deadline) {
-        if addr := r.Leader(); addr != "" {
-            return nil
-        }
-        time.Sleep(100 * time.Millisecond)
-    }
-    return fmt.Errorf("timed out waiting for raft leader")
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if addr := r.Leader(); addr != "" {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for raft leader")
 }
