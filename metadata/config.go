@@ -10,6 +10,8 @@ type NodeConfig struct {
 	RaftDir   string            `json:"raft_dir"`
 	PeerAddrs map[string]string `json:"peer_addrs"` // nodeID → raftAddr
 
+	Bootstrap bool `json:"bootstrap"`
+
 	ReplicationFactor int           `json:"replication_factor"`
 	SuspectTimeout    time.Duration `json:"suspect_timeout"`
 	DeadTimeout       time.Duration `json:"dead_timeout"`

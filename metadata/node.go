@@ -61,19 +61,14 @@ func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
 		return nil, fmt.Errorf("create raft: %w", err)
 	}
 
-	// Bootstrap — only on first startup
-	// hasExistingState checks the log/stable store for any prior state
-	hasState, err := raft.HasExistingState(r.LogStore, r.StableStore, snapshotStore)
-	if err != nil {
-		return nil, fmt.Errorf("check existing state: %w", err)
-	}
+	// Bootstrap is the operator's responsibility —
+	// set NodeConfig.Bootstrap = true only on first ever startup
 
-	if !hasState {
-		servers := []raft.Server{
-			// always include yourself
+	if r.Config.Bootstrap {
+		servers:= []raft.Server{
 			{
 				ID:      raft.ServerID(r.Config.NodeID),
-				Address: transport.LocalAddr(),
+				Address: raft.ServerAddress(r.Config.RaftAddr),
 			},
 		}
 
@@ -112,3 +107,4 @@ func WaitForLeader(r *raft.Raft, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timed out waiting for raft leader")
 }
+

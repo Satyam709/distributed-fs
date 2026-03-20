@@ -1,10 +1,12 @@
 package store
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"fmt"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewBoltStore_Success(t *testing.T) {
@@ -17,7 +19,11 @@ func TestNewBoltStore_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, store)
 
-	store.Close()
+	err = store.Close()
+	if err != nil {
+		fmt.Println("err in textNewBoltStore_sucess : ", err)
+	}
+
 }
 
 func TestNewBoltStore_InvalidPath(t *testing.T) {

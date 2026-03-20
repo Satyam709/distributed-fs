@@ -32,7 +32,7 @@ func nextAddr() string {
 
 // type struct{}
 
-// func (f *testFSM) Apply(log *raft.Log) interface{}        { return nil }
+// func (f *testFSM()) Apply(log *raft.Log) interface{}        { return nil }
 // func (f *testFSM) Snapshot() (raft.FSMSnapshot, error)   { return &testSnapshot{}, nil }
 // func (f *testFSM) Restore(rc io.ReadCloser) error        { return rc.Close() }
 
@@ -41,11 +41,9 @@ func nextAddr() string {
 // func (s *testSnapshot) Persist(sink raft.SnapshotSink) error { return sink.Close() }
 // func (s *testSnapshot) Release()                              {}
 
-func generateMetaDataStub() *fsm.MetadataFSM {
+func newTestFSM() *fsm.MetadataFSM {
 	return fsm.NewEmptyMetadataFsm(nil)
 }
-
-var testFSM = generateMetaDataStub()
 
 // --- helpers ---
 
@@ -54,6 +52,7 @@ func makeNodeConfig(dir, addr string) NodeConfig {
 		NodeID:            "node1",
 		RaftAddr:          addr,
 		RaftDir:           dir,
+		Bootstrap:         true,
 		HeartbeatTimeout:  500 * time.Millisecond,
 		ElectionTimeout:   500 * time.Millisecond,
 		SnapshotInterval:  10 * time.Second,
@@ -71,7 +70,7 @@ func setupSingleNodeRaft(t *testing.T) *raft.Raft {
 
 	cfg := RaftConfig{
 		Config:      makeNodeConfig(dir, nextAddr()),
-		FSM:         testFSM,
+		FSM:         newTestFSM(),
 		LogStore:    logStore,
 		StableStore: logStore,
 	}
@@ -81,7 +80,10 @@ func setupSingleNodeRaft(t *testing.T) *raft.Raft {
 
 	t.Cleanup(func() {
 		node.Shutdown()
-		logStore.Close()
+		err = logStore.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
 	})
 
 	return node
@@ -107,14 +109,17 @@ func setupRaftWithoutBootstrap(t *testing.T) *raft.Raft {
 	transport, err := raft.NewTCPTransport(nextAddr(), nil, 3, 5*time.Second, nil)
 	require.NoError(t, err)
 
-	node, err := raft.NewRaft(raftCfg, testFSM, logStore, logStore, snapshotStore, transport)
+	node, err := raft.NewRaft(raftCfg, newTestFSM(), logStore, logStore, snapshotStore, transport)
 	require.NoError(t, err)
 
 	// deliberately NOT calling BootstrapCluster — node will never get a leader
 
 	t.Cleanup(func() {
 		node.Shutdown()
-		logStore.Close()
+		err = logStore.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
 	})
 
 	return node
@@ -166,7 +171,7 @@ func TestNewRaftNode_Success(t *testing.T) {
 
 	cfg := RaftConfig{
 		Config:      makeNodeConfig(dir, nextAddr()),
-		FSM:         testFSM,
+		FSM:         newTestFSM(),
 		LogStore:    logStore,
 		StableStore: logStore,
 	}
@@ -177,7 +182,10 @@ func TestNewRaftNode_Success(t *testing.T) {
 
 	t.Cleanup(func() {
 		node.Shutdown()
-		logStore.Close()
+		err = logStore.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
 	})
 }
 
@@ -186,11 +194,16 @@ func TestNewRaftNode_InvalidAddr(t *testing.T) {
 
 	logStore, err := store.NewBoltStore(filepath.Join(dir, "raft.db"))
 	require.NoError(t, err)
-	t.Cleanup(func() { logStore.Close() }) // registered immediately — runs regardless of what happens next
+	t.Cleanup(func() {
+		err = logStore.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
+	}) // registered immediately — runs regardless of what happens next
 
 	cfg := RaftConfig{
 		Config:      makeNodeConfig(dir, "not-a-valid-addr"),
-		FSM:         testFSM,
+		FSM:         newTestFSM(),
 		LogStore:    logStore,
 		StableStore: logStore,
 	}
@@ -214,7 +227,7 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	store1 := newStore()
 	node1, err := NewRaftNode(RaftConfig{
 		Config:      makeNodeConfig(dir, addr),
-		FSM:         testFSM,
+		FSM:         newTestFSM(),
 		LogStore:    store1,
 		StableStore: store1,
 	})
@@ -227,7 +240,13 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	if err := node1.Shutdown().Error(); err != nil {
 		t.Logf("node1 shutdown error: %v", err)
 	}
-	store1.Close()
+	err = store1.Close()
+	if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
+
+	restartCfg := makeNodeConfig(dir, addr)
+	restartCfg.Bootstrap = false // simulates operator forgetting to set Bootstrap=true on restart
 
 	// --- second startup: same dir, HasExistingState = true, bootstrap skipped ---
 	var node2 *raft.Raft
@@ -235,15 +254,18 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		store2 = newStore()
 		node2, err = NewRaftNode(RaftConfig{
-			Config:      makeNodeConfig(dir, addr),
-			FSM:         testFSM,
+			Config:      restartCfg,
+			FSM:         newTestFSM(),
 			LogStore:    store2,
 			StableStore: store2,
 		})
 		if err == nil {
 			break
 		}
-		store2.Close()
+		err = store2.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
 		time.Sleep(300 * time.Millisecond)
 	}
 	require.NoError(t, err)
@@ -252,7 +274,10 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 		if err := node2.Shutdown().Error(); err != nil {
 			t.Logf("node2 shutdown error: %v", err)
 		}
-		store2.Close()
+		err = store2.Close()
+		if err != nil {
+			fmt.Println("err in setupSingleNodeRaft : ", err)
+		}
 	})
 }
 
