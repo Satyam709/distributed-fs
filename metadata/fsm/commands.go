@@ -1,6 +1,7 @@
 package fsm
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -117,6 +118,11 @@ type CommandUpdateRepairJob struct {
 }
 
 // Propose proposes the cmd to the given raft instance
-func Propose(raft *raft.Raft, cmd MetadataCommand) {
-
+func Propose(raft *raft.Raft, cmd MetadataCommand) error {
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	f := raft.Apply(data, 5*time.Second)
+	return f.Error()
 }
