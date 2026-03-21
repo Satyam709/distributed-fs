@@ -3,7 +3,7 @@
 *.out
 bin/**
 .env
-
+.idea/
 # Ignore build artifacts
 manifests_logs/
 

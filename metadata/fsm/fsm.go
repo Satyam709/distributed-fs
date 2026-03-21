@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/raft"
@@ -203,7 +205,7 @@ func (mfsm *MetadataFSM) Restore(snapshot io.ReadCloser) error {
 // re-activates an existing one. If the node already exists its address,
 // capacity, and status are updated (useful when a node restarts).
 func (mfsm *MetadataFSM) handleCmdRegisterNode(req CommandRegisterNode) error {
-	node, err := mfsm.getNodeEntryForID(req.NodeID)
+	node, err := mfsm.GetNode(req.NodeID)
 	if err == nil {
 		// Node already known — update it in place.
 		mfsm.logger.Debug("CmdRegisterNode: node already exists... updating it")
@@ -234,7 +236,7 @@ func (mfsm *MetadataFSM) handleCmdRegisterNode(req CommandRegisterNode) error {
 // The NodeWatcher / RepairScheduler will subsequently handle
 // migrating chunks off this node.
 func (mfsm *MetadataFSM) handleCmdDeregisterNode(req CommandDeregisterNode) error {
-	node, err := mfsm.getNodeEntryForID(req.NodeID)
+	node, err := mfsm.GetNode(req.NodeID)
 	if err != nil {
 		return errors.Join(errors.New("cmdDeregisterNode failed: "), err)
 	}
@@ -252,7 +254,7 @@ func (mfsm *MetadataFSM) handleCmdDeregisterNode(req CommandDeregisterNode) erro
 // Once dead the node is excluded from placement eligibility and
 // its chunks become candidates for re-replication.
 func (mfsm *MetadataFSM) handleCmdMarkNodeDead(req CommandMarkNodeDead) error {
-	node, err := mfsm.getNodeEntryForID(req.NodeID)
+	node, err := mfsm.GetNode(req.NodeID)
 	if err != nil {
 		return errors.Join(errors.New("cmdMarkNodeDead failed: "), err)
 	}
@@ -268,7 +270,7 @@ func (mfsm *MetadataFSM) handleCmdMarkNodeDead(req CommandMarkNodeDead) error {
 // handleCmdMarkNodeAlive transitions a node back to "alive".
 // Used during node re-registration after temporary failure.
 func (mfsm *MetadataFSM) handleCmdMarkNodeAlive(req CommandMarkNodeAlive) error {
-	node, err := mfsm.getNodeEntryForID(req.NodeID)
+	node, err := mfsm.GetNode(req.NodeID)
 	if err != nil {
 		return errors.Join(errors.New("cmdMarkNodeAlive failed: "), err)
 	}
@@ -286,7 +288,7 @@ func (mfsm *MetadataFSM) handleCmdMarkNodeAlive(req CommandMarkNodeAlive) error 
 // heartbeat data (not every heartbeat — roughly every Nth to avoid
 // log spam).
 func (mfsm *MetadataFSM) handleCmdUpdateNodeSpace(req CommandUpdateNodeSpace) error {
-	node, err := mfsm.getNodeEntryForID(req.NodeID)
+	node, err := mfsm.GetNode(req.NodeID)
 	if err != nil {
 		return errors.Join(errors.New("cmdUpdateNodeSpace failed: "), err)
 	}
@@ -313,7 +315,7 @@ func (mfsm *MetadataFSM) handleCmdUpdateNodeSpace(req CommandUpdateNodeSpace) er
 // FileStatusComplete only after a subsequent CmdCommitFile.
 func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 	// Reject duplicate file IDs.
-	_, err := mfsm.getFileEntryForID(req.FileID)
+	_, err := mfsm.GetFile(req.FileID)
 	if err == nil {
 		return errors.New("CmdCreateFile: fileID already exists in our systems, cannot override")
 	}
@@ -371,7 +373,7 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 // If any validation fails the file status is left unchanged and an
 // error is returned.
 func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
-	file, err := mfsm.getFileEntryForID(req.FileID)
+	file, err := mfsm.GetFile(req.FileID)
 	if err != nil {
 		return errors.Join(errors.New("cmdCommitFile: "), err)
 	}
@@ -415,7 +417,7 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 // RepairScheduler / eviction queue — this handler only updates the
 // canonical metadata state.
 func (mfsm *MetadataFSM) handleCmdDeleteFile(req CommandDeleteFile) error {
-	file, err := mfsm.getFileEntryForID(req.FileID)
+	file, err := mfsm.GetFile(req.FileID)
 	if err != nil {
 		return errors.Join(errors.New("cmdDeleteFile: "), err)
 	}
@@ -434,7 +436,7 @@ func (mfsm *MetadataFSM) handleCmdDeleteFile(req CommandDeleteFile) error {
 // The handler guards against double-commits: a chunk that already has a
 // checksum or is already Complete is rejected.
 func (mfsm *MetadataFSM) handleCmdCommitChunk(req CommandCommitChunk) error {
-	chunk, err := mfsm.getChunkEntryForID(req.ChunkID)
+	chunk, err := mfsm.GetChunk(req.ChunkID)
 	if err != nil {
 		return errors.Join(errors.New("cmdCommitChunk: "), err)
 	}
@@ -453,7 +455,7 @@ func (mfsm *MetadataFSM) handleCmdCommitChunk(req CommandCommitChunk) error {
 // replica list. This is used during reconciliation (stale replica),
 // corruption reporting, or node death clean-up.
 func (mfsm *MetadataFSM) handleCmdEvictChunkFromNode(req CommandEvictChunkFromNode) error {
-	chunk, err := mfsm.getChunkEntryForID(req.ChunkID)
+	chunk, err := mfsm.GetChunk(req.ChunkID)
 	if err != nil {
 		return errors.Join(errors.New("cmdEvictChunk: "), err)
 	}
@@ -482,7 +484,7 @@ func (mfsm *MetadataFSM) handleCmdEvictChunkFromNode(req CommandEvictChunkFromNo
 // This is the terminal state when repair has been exhausted and no
 // live replicas remain.
 func (mfsm *MetadataFSM) handleCmdMarkChunkLost(req CommandMarkChunkLost) error {
-	chunk, err := mfsm.getChunkEntryForID(req.ChunkID)
+	chunk, err := mfsm.GetChunk(req.ChunkID)
 	if err != nil {
 		return errors.Join(errors.New("cmdMarkChunkLost: "), err)
 	}
@@ -501,7 +503,7 @@ func (mfsm *MetadataFSM) handleCmdMarkChunkLost(req CommandMarkChunkLost) error 
 // they will be populated by the RepairScheduler in a follow-up
 // CmdUpdateRepairJob once placement has been decided.
 func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) error {
-	_, err := mfsm.getJobEntryForID(req.JobID)
+	_, err := mfsm.GetRepairJob(req.JobID)
 	if err == nil {
 		return errors.New("cmdCreateRepairJob: job already exists")
 	}
@@ -523,7 +525,7 @@ func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) er
 // attempt counter, and optional error message. Used by the gRPC handler
 // when a storage node reports repair completion or failure.
 func (mfsm *MetadataFSM) handleCmdUpdateRepairJob(req CommandUpdateRepairJob) error {
-	job, err := mfsm.getJobEntryForID(req.JobID)
+	job, err := mfsm.GetRepairJob(req.JobID)
 	if err != nil {
 		return errors.Join(errors.New("cmdUpdateRepairJob: "), err)
 	}
@@ -554,21 +556,16 @@ func upsert[T any](mu sync.Locker, registry map[string]T, key string, entry T) e
 	return nil
 }
 
-// getNodeEntryForID performs a read-locked lookup of a NodeEntry.
-// Returns ErrNodeNotFound if the node is not in the registry.
-func (mfsm *MetadataFSM) getNodeEntryForID(nodeID string) (*NodeEntry, error) {
-	mfsm.nrMutex.RLock()
-	defer mfsm.nrMutex.RUnlock()
-	node, ok := mfsm.NodeRegistry[nodeID]
-	if !ok {
-		return nil, ErrNodeNotFound
-	}
-	return node, nil
-}
+// Read Methods — Public API
+//
+// These are called by the gRPC handler to serve reads. They do NOT go
+// through Raft — they are direct in-memory reads protected by RLocks.
 
-// getFileEntryForID performs a read-locked lookup of a FileRecord.
+// File reads
+
+// GetFile performs a read-locked lookup of a FileRecord by file ID.
 // Returns ErrFileNotFound if the file is not in the index.
-func (mfsm *MetadataFSM) getFileEntryForID(fileID string) (*FileRecord, error) {
+func (mfsm *MetadataFSM) GetFile(fileID string) (*FileRecord, error) {
 	mfsm.fiMutex.RLock()
 	defer mfsm.fiMutex.RUnlock()
 	file, ok := mfsm.FileIndex[fileID]
@@ -578,9 +575,66 @@ func (mfsm *MetadataFSM) getFileEntryForID(fileID string) (*FileRecord, error) {
 	return file, nil
 }
 
-// getChunkEntryForID performs a read-locked lookup of a ChunkRecord.
+// GetFileByName performs a linear scan of the FileIndex to find a file
+// by its human-readable filename. Returns ErrFileNotFound if no match
+// exists. If multiple files share the same name only the first match
+// (non-deterministic map order) is returned.
+func (mfsm *MetadataFSM) GetFileByName(filename string) (*FileRecord, error) {
+	mfsm.fiMutex.RLock()
+	defer mfsm.fiMutex.RUnlock()
+	for _, file := range mfsm.FileIndex {
+		if file.Filename == filename {
+			return file, nil
+		}
+	}
+	return nil, ErrFileNotFound
+}
+
+// ListFiles returns all files whose filename starts with the given prefix.
+// An empty prefix matches every file. Results are sorted by filename for
+// deterministic output.
+func (mfsm *MetadataFSM) ListFiles(prefix string) ([]*FileRecord, error) {
+	mfsm.fiMutex.RLock()
+	defer mfsm.fiMutex.RUnlock()
+	result := make([]*FileRecord, 0)
+	for _, file := range mfsm.FileIndex {
+		if strings.HasPrefix(file.Filename, prefix) {
+			result = append(result, file)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Filename < result[j].Filename
+	})
+	return result, nil
+}
+
+// GetFileChunks returns all ChunkRecords belonging to a file, ordered
+// by ChunkIndex. Returns ErrFileNotFound if the file does not exist.
+func (mfsm *MetadataFSM) GetFileChunks(fileID string) ([]*ChunkRecord, error) {
+	file, err := mfsm.GetFile(fileID)
+	if err != nil {
+		return nil, err
+	}
+
+	mfsm.crMutex.RLock()
+	defer mfsm.crMutex.RUnlock()
+
+	chunks := make([]*ChunkRecord, 0, len(file.ChunkIDs))
+	for _, cid := range file.ChunkIDs {
+		ck, ok := mfsm.ChunkRegistry[cid]
+		if !ok {
+			return nil, ErrChunkNotFound
+		}
+		chunks = append(chunks, ck)
+	}
+	return chunks, nil
+}
+
+// Chunk reads
+
+// GetChunk performs a read-locked lookup of a ChunkRecord by chunk ID.
 // Returns ErrChunkNotFound if the chunk is not in the registry.
-func (mfsm *MetadataFSM) getChunkEntryForID(chunkID string) (*ChunkRecord, error) {
+func (mfsm *MetadataFSM) GetChunk(chunkID string) (*ChunkRecord, error) {
 	mfsm.crMutex.RLock()
 	defer mfsm.crMutex.RUnlock()
 	chunk, ok := mfsm.ChunkRegistry[chunkID]
@@ -590,9 +644,91 @@ func (mfsm *MetadataFSM) getChunkEntryForID(chunkID string) (*ChunkRecord, error
 	return chunk, nil
 }
 
-// getJobEntryForID performs a read-locked lookup of a RepairJob.
+// GetChunkLocations returns the NodeEntry for each live replica of a
+// chunk, filtering out dead nodes. Returns ErrChunkNotFound if the
+// chunk does not exist.
+func (mfsm *MetadataFSM) GetChunkLocations(chunkID string) ([]NodeEntry, error) {
+	chunk, err := mfsm.GetChunk(chunkID)
+	if err != nil {
+		return nil, err
+	}
+
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+
+	nodes := make([]NodeEntry, 0, len(chunk.Replicas))
+	for _, nodeID := range chunk.Replicas {
+		node, ok := mfsm.NodeRegistry[nodeID]
+		if !ok {
+			continue // node removed from registry
+		}
+		if node.Status == NodeStatusDead {
+			continue
+		}
+		nodes = append(nodes, *node)
+	}
+	return nodes, nil
+}
+
+// GetChunksByNode scans the ChunkRegistry and returns the IDs of all
+// chunks that have the given node in their replica list.
+func (mfsm *MetadataFSM) GetChunksByNode(nodeID string) ([]string, error) {
+	mfsm.crMutex.RLock()
+	defer mfsm.crMutex.RUnlock()
+
+	var chunkIDs []string
+	for _, chunk := range mfsm.ChunkRegistry {
+		for _, nid := range chunk.Replicas {
+			if nid == nodeID {
+				chunkIDs = append(chunkIDs, chunk.ChunkID)
+				break
+			}
+		}
+	}
+	return chunkIDs, nil
+}
+
+// Node reads
+
+// GetNode performs a read-locked lookup of a NodeEntry by node ID.
+// Returns ErrNodeNotFound if the node is not in the registry.
+func (mfsm *MetadataFSM) GetNode(nodeID string) (*NodeEntry, error) {
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+	node, ok := mfsm.NodeRegistry[nodeID]
+	if !ok {
+		return nil, ErrNodeNotFound
+	}
+	return node, nil
+}
+
+// GetLiveNodes returns a copy of every NodeEntry with status "alive".
+func (mfsm *MetadataFSM) GetLiveNodes() ([]NodeEntry, error) {
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+
+	nodes := make([]NodeEntry, 0)
+	for _, node := range mfsm.NodeRegistry {
+		if node.Status == NodeStatusAlive {
+			nodes = append(nodes, *node)
+		}
+	}
+	return nodes, nil
+}
+
+// GetNodeCount returns the total number of nodes in the registry
+// regardless of status.
+func (mfsm *MetadataFSM) GetNodeCount() int {
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+	return len(mfsm.NodeRegistry)
+}
+
+// Repair reads
+
+// GetRepairJob performs a read-locked lookup of a RepairJob by job ID.
 // Returns ErrJobNotFound if the job is not in the registry.
-func (mfsm *MetadataFSM) getJobEntryForID(jobID string) (*RepairJob, error) {
+func (mfsm *MetadataFSM) GetRepairJob(jobID string) (*RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 	job, ok := mfsm.RepairJobRegistry[jobID]
@@ -600,4 +736,36 @@ func (mfsm *MetadataFSM) getJobEntryForID(jobID string) (*RepairJob, error) {
 		return nil, ErrJobNotFound
 	}
 	return job, nil
+}
+
+// GetJobsByStatus returns all repair jobs matching the given status.
+// Used for crash recovery (e.g. finding all InProgress jobs after
+// leader failover).
+func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]*RepairJob, error) {
+	mfsm.jrMutex.RLock()
+	defer mfsm.jrMutex.RUnlock()
+
+	var jobs []*RepairJob
+	for _, job := range mfsm.RepairJobRegistry {
+		if job.Status == status {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs, nil
+}
+
+// GetPendingJobsForNode returns all pending repair jobs where the given
+// node is the source. Used by the heartbeat handler to piggyback repair
+// instructions onto heartbeat responses.
+func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]*RepairJob, error) {
+	mfsm.jrMutex.RLock()
+	defer mfsm.jrMutex.RUnlock()
+
+	var jobs []*RepairJob
+	for _, job := range mfsm.RepairJobRegistry {
+		if job.Status == RepairStatusPending && job.SourceNodeID == nodeID {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs, nil
 }
