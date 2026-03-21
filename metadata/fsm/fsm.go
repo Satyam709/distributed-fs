@@ -45,48 +45,67 @@ type MetadataFSMSnapshot struct {
 	RepairJobRegistry map[string]RepairJob   `json:"repairjob_registry"`
 }
 
-func (fsms *MetadataFSMSnapshot) RestoreFSM() {
-	
+// RestoreFSM constructs a new MetadataFSM from the snapshot's deep-copied,
+// value-typed registries. Pointer maps are rebuilt so that the returned FSM
+// is ready for use by Apply() and the read methods.
+func (fsms *MetadataFSMSnapshot) RestoreFSM(logger *logging.CLogger) *MetadataFSM {
+	newFSM := &MetadataFSM{
+		logger:            logger,
+		FileIndex:         make(map[string]*FileRecord, len(fsms.FileIndex)),
+		ChunkRegistry:     make(map[string]*ChunkRecord, len(fsms.ChunkRegistry)),
+		NodeRegistry:      make(map[string]*NodeEntry, len(fsms.NodeRegistry)),
+		RepairJobRegistry: make(map[string]*RepairJob, len(fsms.RepairJobRegistry)),
+	}
+
+	for k, v := range fsms.FileIndex {
+		copy := v // copy the value so each entry gets its own allocation
+		newFSM.FileIndex[k] = &copy
+	}
+	for k, v := range fsms.ChunkRegistry {
+		copy := v
+		newFSM.ChunkRegistry[k] = &copy
+	}
+	for k, v := range fsms.NodeRegistry {
+		copy := v
+		newFSM.NodeRegistry[k] = &copy
+	}
+	for k, v := range fsms.RepairJobRegistry {
+		copy := v
+		newFSM.RepairJobRegistry[k] = &copy
+	}
+
+	return newFSM
 }
 
-func (fsms *MetadataFSMSnapshot) Persist(sink raft.SnapshotSink) (re error) {
-	// serealize the whole MetadataFSMSnapshot
-	saveRegistry := func(d any) error {
-		data, err := json.Marshal(d)
-		if err != nil {
-			return err
-		}
-		n, err := io.Copy(sink, bytes.NewReader(data))
-		if err != nil {
-			return err
-		}
-
-		// if not all bytes written its a failue
-		if n != int64(len(data)) {
-			return errors.New("Persist: insufficient write:  n < len(data)")
-		}
-		return nil
-	}
-
-	// write to sink
-	err := saveRegistry(fsms)
-	if err != nil {
-		return err
-	}
-
-	err = sink.Close()
-	if err != nil {
-		return err
-	}
-
+// Persist serialises the entire snapshot to the given SnapshotSink.
+// On success it closes the sink; on any error it cancels the sink to
+// signal Raft that the snapshot should be discarded.
+func (fsms *MetadataFSMSnapshot) Persist(sink raft.SnapshotSink) error {
+	// Ensure the sink is properly finalised regardless of outcome.
+	var err error
 	defer func() {
-		if re != nil {
-			// cancel if we return with an error
+		if err != nil {
 			_ = sink.Cancel()
 		}
 	}()
 
-	return nil
+	data, err := json.Marshal(fsms)
+	if err != nil {
+		return err
+	}
+
+	n, err := io.Copy(sink, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	if n != int64(len(data)) {
+		err = errors.New("Persist: short write")
+		return err
+	}
+
+	// Close the sink to signal success to Raft.
+	err = sink.Close()
+	return err
 }
 
 func (fsms *MetadataFSMSnapshot) Release() {
@@ -268,21 +287,41 @@ func (mfsm *MetadataFSM) Snapshot() (raft.FSMSnapshot, error) {
 // a lagging follower needs to catch up. It must completely replace the
 // current FSM state with the contents of the snapshot.
 func (mfsm *MetadataFSM) Restore(snapshot io.ReadCloser) error {
-	snap := &MetadataFSMSnapshot{}
-	data, err := io.ReadAll(snapshot)
 	defer func() {
-		err := snapshot.Close()
-		if err != nil {
+		if err := snapshot.Close(); err != nil {
 			mfsm.logger.Error("Restore: snapshot closure failed", err)
 		}
 	}()
+
+	data, err := io.ReadAll(snapshot)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(data, snap)
-	if err != nil {
+
+	snap := &MetadataFSMSnapshot{}
+	if err = json.Unmarshal(data, snap); err != nil {
 		return err
 	}
+
+	// Rebuild pointer-typed registries from the snapshot.
+	restored := snap.RestoreFSM(mfsm.logger)
+
+	// Swap all registries under write locks.
+	mfsm.fiMutex.Lock()
+	mfsm.FileIndex = restored.FileIndex
+	mfsm.fiMutex.Unlock()
+
+	mfsm.crMutex.Lock()
+	mfsm.ChunkRegistry = restored.ChunkRegistry
+	mfsm.crMutex.Unlock()
+
+	mfsm.nrMutex.Lock()
+	mfsm.NodeRegistry = restored.NodeRegistry
+	mfsm.nrMutex.Unlock()
+
+	mfsm.jrMutex.Lock()
+	mfsm.RepairJobRegistry = restored.RepairJobRegistry
+	mfsm.jrMutex.Unlock()
 
 	return nil
 }
