@@ -24,13 +24,13 @@ import (
 type MetadataFSM struct {
 	logger            *logging.CLogger
 	fiMutex           sync.RWMutex
-	FileIndex         map[string]*FileRecord    // file_id → file metadata
+	FileIndex         map[string]*FileRecord // file_id → file metadata
 	crMutex           sync.RWMutex
-	ChunkRegistry     map[string]*ChunkRecord   // chunk_id → chunk metadata + replica list
+	ChunkRegistry     map[string]*ChunkRecord // chunk_id → chunk metadata + replica list
 	nrMutex           sync.RWMutex
-	NodeRegistry      map[string]*NodeEntry      // node_id → storage-node info + status
+	NodeRegistry      map[string]*NodeEntry // node_id → storage-node info + status
 	jrMutex           sync.RWMutex
-	RepairJobRegistry map[string]*RepairJob      // job_id → repair job state
+	RepairJobRegistry map[string]*RepairJob // job_id → repair job state
 }
 
 // Sentinel errors returned by registry lookups.
@@ -306,8 +306,8 @@ func (mfsm *MetadataFSM) handleCmdUpdateNodeSpace(req CommandUpdateNodeSpace) er
 // stub ChunkRecords (status: allocated) in the ChunkRegistry.
 //
 // The method performs a two-pass insert on the ChunkRegistry:
-//   1. Validate that none of the chunk IDs collide with existing records.
-//   2. Insert all chunk records atomically under a single lock hold.
+//  1. Validate that none of the chunk IDs collide with existing records.
+//  2. Insert all chunk records atomically under a single lock hold.
 //
 // The file starts in FileStatusCreating; it transitions to
 // FileStatusComplete only after a subsequent CmdCommitFile.

@@ -242,8 +242,8 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	}
 	err = store1.Close()
 	if err != nil {
-			fmt.Println("err in setupSingleNodeRaft : ", err)
-		}
+		fmt.Println("err in setupSingleNodeRaft : ", err)
+	}
 
 	restartCfg := makeNodeConfig(dir, addr)
 	restartCfg.Bootstrap = false // simulates operator forgetting to set Bootstrap=true on restart

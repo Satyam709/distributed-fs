@@ -315,10 +315,10 @@ func TestHandleCmdMarkNodeAlive(t *testing.T) {
 		assertPost func(*testing.T, *MetadataFSM)
 	}{
 		{
-			name:    "non-existent node",
-			setup:   func(m *MetadataFSM) {},
-			req:     CommandMarkNodeAlive{NodeID: "ghost", UpdatedAt: baseTime},
-			wantErr: true,
+			name:       "non-existent node",
+			setup:      func(m *MetadataFSM) {},
+			req:        CommandMarkNodeAlive{NodeID: "ghost", UpdatedAt: baseTime},
+			wantErr:    true,
 			assertPost: func(t *testing.T, m *MetadataFSM) {},
 		},
 		{
@@ -365,10 +365,10 @@ func TestHandleCmdUpdateNodeSpace(t *testing.T) {
 		assertPost func(*testing.T, *MetadataFSM)
 	}{
 		{
-			name:    "non-existent node",
-			setup:   func(m *MetadataFSM) {},
-			req:     CommandUpdateNodeSpace{NodeID: "ghost", FreeSpace: 1, ChunkCount: 1, UpdatedAt: baseTime},
-			wantErr: true,
+			name:       "non-existent node",
+			setup:      func(m *MetadataFSM) {},
+			req:        CommandUpdateNodeSpace{NodeID: "ghost", FreeSpace: 1, ChunkCount: 1, UpdatedAt: baseTime},
+			wantErr:    true,
 			assertPost: func(t *testing.T, m *MetadataFSM) {},
 		},
 		{
@@ -530,10 +530,10 @@ func TestHandleCmdCommitFile(t *testing.T) {
 		assertPost func(*testing.T, *MetadataFSM)
 	}{
 		{
-			name:    "file does not exist",
-			setup:   func(m *MetadataFSM) {},
-			req:     CommandCommitFile{FileID: "ghost", FileSize: 100, Checksum: checksum},
-			wantErr: true,
+			name:       "file does not exist",
+			setup:      func(m *MetadataFSM) {},
+			req:        CommandCommitFile{FileID: "ghost", FileSize: 100, Checksum: checksum},
+			wantErr:    true,
 			assertPost: func(t *testing.T, m *MetadataFSM) {},
 		},
 		{
@@ -632,10 +632,10 @@ func TestHandleCmdDeleteFile(t *testing.T) {
 		assertPost func(*testing.T, *MetadataFSM)
 	}{
 		{
-			name:    "delete non-existent file",
-			setup:   func(m *MetadataFSM) {},
-			req:     CommandDeleteFile{FileID: "ghost"},
-			wantErr: true,
+			name:       "delete non-existent file",
+			setup:      func(m *MetadataFSM) {},
+			req:        CommandDeleteFile{FileID: "ghost"},
+			wantErr:    true,
 			assertPost: func(t *testing.T, m *MetadataFSM) {},
 		},
 		{
@@ -681,10 +681,10 @@ func TestHandleCmdCommitChunk(t *testing.T) {
 		assertPost func(*testing.T, *MetadataFSM)
 	}{
 		{
-			name:    "chunk does not exist",
-			setup:   func(m *MetadataFSM) {},
-			req:     CommandCommitChunk{ChunkID: "ghost", NodeIDs: []string{"n1"}, Checksum: checksum},
-			wantErr: true,
+			name:       "chunk does not exist",
+			setup:      func(m *MetadataFSM) {},
+			req:        CommandCommitChunk{ChunkID: "ghost", NodeIDs: []string{"n1"}, Checksum: checksum},
+			wantErr:    true,
 			assertPost: func(t *testing.T, m *MetadataFSM) {},
 		},
 		{

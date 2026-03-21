@@ -79,6 +79,7 @@ type MetadataCommand struct {
 	Type    MetadataCmdType `json:"type"`
 	Payload []byte          `json:"payload"`
 }
+
 // CommandRegisterNode carries the data needed to register a new storage
 // node or re-activate an existing one.
 type CommandRegisterNode struct {
@@ -127,6 +128,7 @@ type CommandCreateFile struct {
 	Checksum  []byte    `json:"checksum"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
 // CommandCommitFile transitions a file from "creating" to "complete"
 // after validating size, checksum, and chunk statuses.
 type CommandCommitFile struct {

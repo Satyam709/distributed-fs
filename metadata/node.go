@@ -65,7 +65,7 @@ func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
 	// set NodeConfig.Bootstrap = true only on first ever startup
 
 	if r.Config.Bootstrap {
-		servers:= []raft.Server{
+		servers := []raft.Server{
 			{
 				ID:      raft.ServerID(r.Config.NodeID),
 				Address: raft.ServerAddress(r.Config.RaftAddr),
@@ -107,4 +107,3 @@ func WaitForLeader(r *raft.Raft, timeout time.Duration) error {
 	}
 	return fmt.Errorf("timed out waiting for raft leader")
 }
-
