@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/internal/utils"
 )
 
 // MetadataFSM is the core finite-state machine that holds all metadata
@@ -33,6 +34,63 @@ type MetadataFSM struct {
 	NodeRegistry      map[string]*NodeEntry // node_id → storage-node info + status
 	jrMutex           sync.RWMutex
 	RepairJobRegistry map[string]*RepairJob // job_id → repair job state
+}
+
+var _ raft.FSMSnapshot = &MetadataFSMSnapshot{}
+
+type MetadataFSMSnapshot struct {
+	FileIndex         map[string]FileRecord  `json:"file_index"`
+	ChunkRegistry     map[string]ChunkRecord `json:"chunk_registry"`
+	NodeRegistry      map[string]NodeEntry   `json:"node_registry"`
+	RepairJobRegistry map[string]RepairJob   `json:"repairjob_registry"`
+}
+
+func (fsms *MetadataFSMSnapshot) RestoreFSM() {
+	
+}
+
+func (fsms *MetadataFSMSnapshot) Persist(sink raft.SnapshotSink) (re error) {
+	// serealize the whole MetadataFSMSnapshot
+	saveRegistry := func(d any) error {
+		data, err := json.Marshal(d)
+		if err != nil {
+			return err
+		}
+		n, err := io.Copy(sink, bytes.NewReader(data))
+		if err != nil {
+			return err
+		}
+
+		// if not all bytes written its a failue
+		if n != int64(len(data)) {
+			return errors.New("Persist: insufficient write:  n < len(data)")
+		}
+		return nil
+	}
+
+	// write to sink
+	err := saveRegistry(fsms)
+	if err != nil {
+		return err
+	}
+
+	err = sink.Close()
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if re != nil {
+			// cancel if we return with an error
+			_ = sink.Cancel()
+		}
+	}()
+
+	return nil
+}
+
+func (fsms *MetadataFSMSnapshot) Release() {
+	// pass
 }
 
 // Sentinel errors returned by registry lookups.
@@ -180,18 +238,52 @@ func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
 // The implementation should take a read lock, deep-copy all four
 // registries, release the lock, and then serialise the copies so that
 // Apply is not blocked during the (potentially slow) serialisation.
-//
-// TODO: implement full snapshot serialisation.
 func (mfsm *MetadataFSM) Snapshot() (raft.FSMSnapshot, error) {
-	return nil, nil
+	mfsm.crMutex.RLock()
+	mfsm.fiMutex.RLock()
+	mfsm.jrMutex.RLock()
+	mfsm.nrMutex.RLock()
+
+	fiCopy := utils.DeepCopy(mfsm.FileIndex)
+	crCopy := utils.DeepCopy(mfsm.ChunkRegistry)
+	nrCopy := utils.DeepCopy(mfsm.NodeRegistry)
+	jrCopy := utils.DeepCopy(mfsm.RepairJobRegistry)
+
+	mfsm.crMutex.RUnlock()
+	mfsm.fiMutex.RUnlock()
+	mfsm.jrMutex.RUnlock()
+	mfsm.nrMutex.RUnlock()
+
+	snap := &MetadataFSMSnapshot{
+		FileIndex:         fiCopy,
+		ChunkRegistry:     crCopy,
+		NodeRegistry:      nrCopy,
+		RepairJobRegistry: jrCopy,
+	}
+
+	return snap, nil
 }
 
 // Restore is called by Raft on startup (when a snapshot exists) or when
 // a lagging follower needs to catch up. It must completely replace the
 // current FSM state with the contents of the snapshot.
-//
-// TODO: implement full snapshot restoration.
 func (mfsm *MetadataFSM) Restore(snapshot io.ReadCloser) error {
+	snap := &MetadataFSMSnapshot{}
+	data, err := io.ReadAll(snapshot)
+	defer func() {
+		err := snapshot.Close()
+		if err != nil {
+			mfsm.logger.Error("Restore: snapshot closure failed", err)
+		}
+	}()
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, snap)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
