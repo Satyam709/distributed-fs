@@ -21,7 +21,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// PutChunkRequest - represents the structure of individual frame of a chunk stream
+//
+//PutChunkRequest - represents the structure of individual frame of a chunk stream
 type PutChunkRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId     string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -109,7 +110,8 @@ func (x *PutChunkRequest) GetIsLast() bool {
 	return false
 }
 
-// PutChunkResponse - represents the response for a chunk upload frame
+//
+//PutChunkResponse - represents the response for a chunk upload frame
 type PutChunkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// General response
@@ -173,7 +175,8 @@ func (x *PutChunkResponse) GetChecksum() []byte {
 	return nil
 }
 
-// Response - general embedded fields present in all server responses
+//
+//Response - general embedded fields present in all server responses
 type Response struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          int32                  `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -234,7 +237,8 @@ func (x *Response) GetError() string {
 	return ""
 }
 
-// GetChunkRequest - request structure for fetching a chunk by id
+//
+//GetChunkRequest - request structure for fetching a chunk by id
 type GetChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -279,7 +283,8 @@ func (x *GetChunkRequest) GetChunkId() string {
 	return ""
 }
 
-// GetChunkResponse - response structure for a chunk frame sent to client
+//
+//GetChunkResponse - response structure for a chunk frame sent to client
 type GetChunkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// General response
@@ -361,7 +366,8 @@ func (x *GetChunkResponse) GetIsLast() bool {
 	return false
 }
 
-// DeleteChunkRequest - request structure for deleting a chunk by id
+//
+//DeleteChunkRequest - request structure for deleting a chunk by id
 type DeleteChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -406,7 +412,8 @@ func (x *DeleteChunkRequest) GetChunkId() string {
 	return ""
 }
 
-// DeleteChunkResponse - response structure for chunk deletion
+//
+//DeleteChunkResponse - response structure for chunk deletion
 type DeleteChunkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Response      *Response              `protobuf:"bytes,1,opt,name=response,proto3,oneof" json:"response,omitempty"`
@@ -459,7 +466,8 @@ func (x *DeleteChunkResponse) GetSuccess() bool {
 	return false
 }
 
-// VerifyChunkRequest - request structure for verifying chunk integrity
+//
+//VerifyChunkRequest - request structure for verifying chunk integrity
 type VerifyChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -512,7 +520,8 @@ func (x *VerifyChunkRequest) GetChecksum() []byte {
 	return nil
 }
 
-// VerifyChunkResponse - response structure for chunk verification result
+//
+//VerifyChunkResponse - response structure for chunk verification result
 type VerifyChunkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Response      *Response              `protobuf:"bytes,1,opt,name=response,proto3,oneof" json:"response,omitempty"`
@@ -609,10 +618,11 @@ func (x *NodeInfo) GetAddress() string {
 	return ""
 }
 
-// ReplicateChunkRequest - one frame sent from a source storage node to a replica.
-// The first frame carries is_first=true and the chunk_id.
-// Each subsequent frame carries data.
-// The last frame has is_last=true.
+//
+//ReplicateChunkRequest - one frame sent from a source storage node to a replica.
+//The first frame carries is_first=true and the chunk_id.
+//Each subsequent frame carries data.
+//The last frame has is_last=true.
 type ReplicateChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -689,9 +699,10 @@ func (x *ReplicateChunkRequest) GetIsLast() bool {
 	return false
 }
 
-// ReplicateChunkResponse - sent by the receiving node back to the sender.
-// Per-frame ack (ok=true) provides flow control.
-// The final response (is_final=true) contains the checksum the receiver computed.
+//
+//ReplicateChunkResponse - sent by the receiving node back to the sender.
+//Per-frame ack (ok=true) provides flow control.
+//The final response (is_final=true) contains the checksum the receiver computed.
 type ReplicateChunkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
