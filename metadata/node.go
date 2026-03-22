@@ -1,109 +1,81 @@
 package metadata
 
 import (
-	"fmt"
-	"net"
-	"time"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 
 	"github.com/hashicorp/raft"
+	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"google.golang.org/grpc"
 )
 
-type RaftConfig struct {
-	Config      NodeConfig
-	FSM         raft.FSM
-	LogStore    raft.LogStore
-	StableStore raft.StableStore
+type MetadataNode struct {
+	Config       NodeConfig
+	logger       *logging.CLogger
+	stableStore  raft.StableStore
+	logStore     raft.LogStore
+	fsm          raft.FSM
+	raftInstance *raft.Raft
+	server       *grpc.Server
 }
 
-func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
+// init all dependencies
+func NewMetadataNode(config NodeConfig) (*MetadataNode, error) {
 
-	raftConfig := raft.DefaultConfig()
-	raftConfig.LocalID = raft.ServerID(r.Config.NodeID)
-	raftConfig.HeartbeatTimeout = r.Config.HeartbeatTimeout
-	raftConfig.ElectionTimeout = r.Config.ElectionTimeout
-	raftConfig.SnapshotInterval = r.Config.SnapshotInterval
-	raftConfig.SnapshotThreshold = r.Config.SnapshotThreshold
+	fsm := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
 
-	addr, err := net.ResolveTCPAddr("tcp", r.Config.RaftAddr)
+	info, err := os.Stat(config.RaftDir)
 	if err != nil {
-		return nil, fmt.Errorf("resolve raft addr: %w", err)
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, errors.New("NewMetadataNode: raftDir doesnt not exist")
 	}
 
-	transport, err := raft.NewTCPTransport(
-		r.Config.RaftAddr,
-		addr,
-		3,              // maxPool
-		10*time.Second, // timeout
-		nil,            // logger (nil = discard)
+	// setup stable and logstore
+	boltStore, err := raftboltdb.New(
+		raftboltdb.Options{
+			Path: filepath.Join(config.RaftDir, "raft.db"),
+		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create transport: %w", err)
+		return nil, err
 	}
 
-	snapshotStore, err := raft.NewFileSnapshotStore(
-		r.Config.RaftDir,
-		r.Config.SnapshotRetain,
-		nil,
-	)
+	stableStore := boltStore
+	logStore := boltStore
+
+	// init raft
+	raftIns, err := NewRaftNode(RaftConfig{
+		Config:      config,
+		FSM:         fsm,
+		LogStore:    logStore,
+		StableStore: stableStore,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("create snapshot store: %w", err)
+		return nil, err
 	}
 
-	raftNode, err := raft.NewRaft(
-		raftConfig,
-		r.FSM,
-		r.LogStore,
-		r.StableStore,
-		snapshotStore,
-		transport,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("create raft: %w", err)
-	}
+	// TODO: add grpc server
 
-	// Bootstrap is the operator's responsibility —
-	// set NodeConfig.Bootstrap = true only on first ever startup
-
-	if r.Config.Bootstrap {
-		servers := []raft.Server{
-			{
-				ID:      raft.ServerID(r.Config.NodeID),
-				Address: raft.ServerAddress(r.Config.RaftAddr),
-			},
-		}
-
-		// add peers if this is a multi-node cluster
-		for id, addr := range r.Config.PeerAddrs {
-			servers = append(servers, raft.Server{
-				ID:      raft.ServerID(id),
-				Address: raft.ServerAddress(addr),
-			})
-		}
-
-		cfg := raft.Configuration{Servers: servers}
-		if err := raftNode.BootstrapCluster(cfg).Error(); err != nil {
-			return nil, fmt.Errorf("bootstrap cluster: %w", err)
-		}
-	}
-
-	return raftNode, nil
+	return &MetadataNode{
+		Config:       config,
+		logger:       logging.NewCLogger().With("Component", "MetadataNode"),
+		stableStore:  stableStore,
+		logStore:     logStore,
+		fsm:          fsm,
+		raftInstance: raftIns,
+	}, nil
 }
 
-func IsLeader(r *raft.Raft) bool {
-	return r.State() == raft.Leader
+func (mn *MetadataNode) Start(ctx context.Context) {
+	mn.logger.Info("Starting up node")
 }
 
-func LeaderAddress(r *raft.Raft) string {
-	return string(r.Leader())
-}
-
-func WaitForLeader(r *raft.Raft, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if addr := r.Leader(); addr != "" {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	return fmt.Errorf("timed out waiting for raft leader")
+func (mn *MetadataNode) Stop() {
+	mn.logger.Info("stoping node")
 }
