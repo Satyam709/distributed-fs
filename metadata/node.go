@@ -72,10 +72,12 @@ func NewMetadataNode(config NodeConfig) (*MetadataNode, error) {
 	}, nil
 }
 
-func (mn *MetadataNode) Start(ctx context.Context) {
+func (mn *MetadataNode) Start(ctx context.Context) error {
 	mn.logger.Info("Starting up node")
+	panic("unimplemented")
 }
 
-func (mn *MetadataNode) Stop() {
+func (mn *MetadataNode) Shutdown(ctx context.Context) error {
 	mn.logger.Info("stoping node")
+	panic("unimplemented")
 }
