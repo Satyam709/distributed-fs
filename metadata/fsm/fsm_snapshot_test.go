@@ -42,8 +42,8 @@ type failingSink struct {
 
 func (f *failingSink) Write([]byte) (int, error) { return 0, errors.New("disk full") }
 func (f *failingSink) Close() error              { return nil }
-func (f *failingSink) Cancel() error              { f.cancelled = true; return nil }
-func (f *failingSink) ID() string                 { return "failing-sink" }
+func (f *failingSink) Cancel() error             { f.cancelled = true; return nil }
+func (f *failingSink) ID() string                { return "failing-sink" }
 
 // shortWriteSink writes only the first byte of every write, simulating
 // a short write.
@@ -91,7 +91,7 @@ func seedFullFSM(t *testing.T, m *MetadataFSM) {
 	m.FileIndex["file-beta"] = &FileRecord{
 		FileID: "file-beta", Filename: "beta.bin",
 		FileSize: 2048, ChunkIDs: []string{"ck-3"},
-		Status: FileStatusCreating,
+		Status:    FileStatusCreating,
 		CreatedAt: now,
 	}
 
