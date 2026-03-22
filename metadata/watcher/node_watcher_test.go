@@ -1,10 +1,12 @@
 package watcher
 
 import (
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/hashicorp/raft"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"github.com/stretchr/testify/assert"
@@ -71,9 +73,60 @@ func newTestFSM(t *testing.T) *fsm.MetadataFSM {
 	return fsm.NewEmptyMetadataFsm(logging.NewCLogger())
 }
 
+func addNodeToFsm(t *testing.T, mockFsm *fsm.MetadataFSM, nodes ...*fsm.NodeEntry) {
+	for _, val := range nodes {
+		addNodeCmd := fsm.CommandRegisterNode{
+			NodeID:     val.NodeID,
+			Address:    val.Address,
+			FreeSpace:  val.FreeSpace,
+			ChunkCount: val.ChunkCount,
+			CreatedAt:  val.RegisteredAt,
+		}
+		data, err := json.Marshal(addNodeCmd)
+		require.NoError(t, err, "failed to marshal add node")
+		cmd := fsm.MetadataCommand{
+			Type:    fsm.CmdRegisterNode,
+			Payload: data,
+		}
+		data, err = json.Marshal(cmd)
+		require.NoError(t, err, "failed to marshal add node")
+
+		res := mockFsm.Apply(&raft.Log{
+			Index: 1,
+			Term:  1,
+			Data:  data,
+		})
+
+		require.Nil(t, res, "res of addnode apply not nil")
+	}
+}
+
+func markNodeDead(t *testing.T, mockFsm *fsm.MetadataFSM, nodeID string, updatedAt time.Time) {
+	addNodeCmd := fsm.CommandMarkNodeDead{
+		NodeID:    nodeID,
+		UpdatedAt: updatedAt,
+	}
+	data, err := json.Marshal(addNodeCmd)
+	require.NoError(t, err, "failed to marshal markdead node")
+	cmd := fsm.MetadataCommand{
+		Type:    fsm.CmdMarkNodeDead,
+		Payload: data,
+	}
+	data, err = json.Marshal(cmd)
+	require.NoError(t, err, "failed to marshal markdead node")
+
+	res := mockFsm.Apply(&raft.Log{
+		Index: 1,
+		Term:  1,
+		Data:  data,
+	})
+
+	require.Nil(t, res, "res of marknode-dead apply not nil")
+}
+
 func seedAliveNode(t *testing.T, m *fsm.MetadataFSM, nodeID string, lastSeen time.Time) {
 	t.Helper()
-	m.NodeRegistry[nodeID] = &fsm.NodeEntry{
+	node := &fsm.NodeEntry{
 		NodeID:       nodeID,
 		Address:      nodeID + ":8000",
 		Status:       fsm.NodeStatusAlive,
@@ -82,11 +135,13 @@ func seedAliveNode(t *testing.T, m *fsm.MetadataFSM, nodeID string, lastSeen tim
 		RegisteredAt: lastSeen,
 		UpdatedAt:    lastSeen,
 	}
+	addNodeToFsm(t, m, node)
+	require.NoError(t, m.UpdateLastSeen(nodeID, lastSeen), "lastseen update failed")
 }
 
 func seedDeadNode(t *testing.T, m *fsm.MetadataFSM, nodeID string, lastSeen time.Time) {
 	t.Helper()
-	m.NodeRegistry[nodeID] = &fsm.NodeEntry{
+	node := &fsm.NodeEntry{
 		NodeID:       nodeID,
 		Address:      nodeID + ":8000",
 		Status:       fsm.NodeStatusDead,
@@ -95,6 +150,11 @@ func seedDeadNode(t *testing.T, m *fsm.MetadataFSM, nodeID string, lastSeen time
 		RegisteredAt: lastSeen,
 		UpdatedAt:    lastSeen,
 	}
+	addNodeToFsm(t, m, node)
+	require.NoError(t, m.UpdateLastSeen(nodeID, lastSeen), "lastseen update failed")
+
+	// mark it dead
+	markNodeDead(t, m, nodeID, lastSeen)
 }
 
 // Tests

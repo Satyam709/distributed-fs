@@ -70,25 +70,25 @@ func seedFullFSM(t *testing.T, m *MetadataFSM) {
 	now := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
 
 	// Nodes
-	m.NodeRegistry["node-1"] = &NodeEntry{
+	m.nodeRegistry["node-1"] = &NodeEntry{
 		NodeID: "node-1", Address: "10.0.0.1:9000",
 		Status: NodeStatusAlive, FreeSpace: 5000, ChunkCount: 10,
 		RegisteredAt: now, UpdatedAt: now,
 	}
-	m.NodeRegistry["node-2"] = &NodeEntry{
+	m.nodeRegistry["node-2"] = &NodeEntry{
 		NodeID: "node-2", Address: "10.0.0.2:9000",
 		Status: NodeStatusDead, FreeSpace: 0, ChunkCount: 5,
 		RegisteredAt: now, UpdatedAt: now,
 	}
 
 	// Files
-	m.FileIndex["file-alpha"] = &FileRecord{
+	m.fileIndex["file-alpha"] = &FileRecord{
 		FileID: "file-alpha", Filename: "alpha.txt",
 		FileSize: 1024, ChunkIDs: []string{"ck-1", "ck-2"},
 		Status: FileStatusComplete, CheckSum: []byte("abc123"),
 		CreatedAt: now,
 	}
-	m.FileIndex["file-beta"] = &FileRecord{
+	m.fileIndex["file-beta"] = &FileRecord{
 		FileID: "file-beta", Filename: "beta.bin",
 		FileSize: 2048, ChunkIDs: []string{"ck-3"},
 		Status:    FileStatusCreating,
@@ -96,29 +96,29 @@ func seedFullFSM(t *testing.T, m *MetadataFSM) {
 	}
 
 	// Chunks
-	m.ChunkRegistry["ck-1"] = &ChunkRecord{
+	m.chunkRegistry["ck-1"] = &ChunkRecord{
 		ChunkID: "ck-1", FileID: "file-alpha", ChunkIndex: 0,
 		Size: 512, Checksum: []byte("sum1"),
 		Replicas: []string{"node-1", "node-2"}, Status: ChunkStatusComplete,
 	}
-	m.ChunkRegistry["ck-2"] = &ChunkRecord{
+	m.chunkRegistry["ck-2"] = &ChunkRecord{
 		ChunkID: "ck-2", FileID: "file-alpha", ChunkIndex: 1,
 		Size: 512, Checksum: []byte("sum2"),
 		Replicas: []string{"node-1"}, Status: ChunkStatusComplete,
 	}
-	m.ChunkRegistry["ck-3"] = &ChunkRecord{
+	m.chunkRegistry["ck-3"] = &ChunkRecord{
 		ChunkID: "ck-3", FileID: "file-beta", ChunkIndex: 0,
 		Status: ChunkStatusRequestAllocation,
 	}
 
 	// Repair jobs
-	m.RepairJobRegistry["job-1"] = &RepairJob{
+	m.repairJobRegistry["job-1"] = &RepairJob{
 		JobID: "job-1", ChunkID: "ck-1",
 		SourceNodeID: "node-1", TargetNodeID: "node-2",
 		Status: RepairStatusPending, Attempts: 0,
 		CreatedAt: now, UpdatedAt: now,
 	}
-	m.RepairJobRegistry["job-2"] = &RepairJob{
+	m.repairJobRegistry["job-2"] = &RepairJob{
 		JobID: "job-2", ChunkID: "ck-2",
 		Status: RepairStatusDone, Attempts: 1, Error: "",
 		CreatedAt: now, UpdatedAt: now,
@@ -157,7 +157,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	// Nodes
-	for id, want := range original.NodeRegistry {
+	for id, want := range original.nodeRegistry {
 		got, err := restored.GetNode(id)
 		require.NoError(t, err, "node %s missing", id)
 		assert.Equal(t, want.NodeID, got.NodeID)
@@ -168,7 +168,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	}
 
 	// Files
-	for id, want := range original.FileIndex {
+	for id, want := range original.fileIndex {
 		got, err := restored.GetFile(id)
 		require.NoError(t, err, "file %s missing", id)
 		assert.Equal(t, want.FileID, got.FileID)
@@ -180,7 +180,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	}
 
 	// Chunks
-	for id, want := range original.ChunkRegistry {
+	for id, want := range original.chunkRegistry {
 		got, err := restored.GetChunk(id)
 		require.NoError(t, err, "chunk %s missing", id)
 		assert.Equal(t, want.ChunkID, got.ChunkID)
@@ -193,7 +193,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	}
 
 	// Repair jobs
-	for id, want := range original.RepairJobRegistry {
+	for id, want := range original.repairJobRegistry {
 		got, err := restored.GetRepairJob(id)
 		require.NoError(t, err, "job %s missing", id)
 		assert.Equal(t, want.JobID, got.JobID)
@@ -217,10 +217,10 @@ func TestSnapshot_EmptyFSM(t *testing.T) {
 	err := restored.Restore(io.NopCloser(bytes.NewReader(data)))
 	require.NoError(t, err)
 
-	assert.Empty(t, restored.FileIndex)
-	assert.Empty(t, restored.ChunkRegistry)
-	assert.Empty(t, restored.NodeRegistry)
-	assert.Empty(t, restored.RepairJobRegistry)
+	assert.Empty(t, restored.fileIndex)
+	assert.Empty(t, restored.chunkRegistry)
+	assert.Empty(t, restored.nodeRegistry)
+	assert.Empty(t, restored.repairJobRegistry)
 }
 
 // TestSnapshot_OverwritesExistingState ensures that Restore fully
@@ -267,7 +267,7 @@ func TestSnapshot_Isolation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mutate original AFTER snapshot was taken.
-	original.NodeRegistry["node-iso"].Address = "MUTATED"
+	original.nodeRegistry["node-iso"].Address = "MUTATED"
 	seedNode(t, original, "node-extra", "10.0.0.6:9000")
 
 	sink := &mockSnapshotSink{}
@@ -297,8 +297,8 @@ func TestRestore_CorruptData(t *testing.T) {
 	require.Error(t, err)
 
 	// The FSM should remain empty (or at worst unchanged).
-	assert.Empty(t, m.FileIndex)
-	assert.Empty(t, m.NodeRegistry)
+	assert.Empty(t, m.fileIndex)
+	assert.Empty(t, m.nodeRegistry)
 }
 
 // TestRestore_EmptyReader exercises the error path when the snapshot
@@ -497,8 +497,8 @@ func TestSnapshot_RegistryCounts(t *testing.T) {
 	err := restored.Restore(io.NopCloser(bytes.NewReader(data)))
 	require.NoError(t, err)
 
-	assert.Equal(t, len(original.FileIndex), len(restored.FileIndex))
-	assert.Equal(t, len(original.ChunkRegistry), len(restored.ChunkRegistry))
-	assert.Equal(t, len(original.NodeRegistry), len(restored.NodeRegistry))
-	assert.Equal(t, len(original.RepairJobRegistry), len(restored.RepairJobRegistry))
+	assert.Equal(t, len(original.fileIndex), len(restored.fileIndex))
+	assert.Equal(t, len(original.chunkRegistry), len(restored.chunkRegistry))
+	assert.Equal(t, len(original.nodeRegistry), len(restored.nodeRegistry))
+	assert.Equal(t, len(original.repairJobRegistry), len(restored.repairJobRegistry))
 }

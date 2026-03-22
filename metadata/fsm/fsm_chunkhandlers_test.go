@@ -45,8 +45,8 @@ func TestHandleCmdCommitChunk(t *testing.T) {
 			name: "reject re-commit when chunk already complete with checksum",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "a.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Status = ChunkStatusComplete
-				m.ChunkRegistry["ck-1"].Checksum = checksum
+				m.chunkRegistry["ck-1"].Status = ChunkStatusComplete
+				m.chunkRegistry["ck-1"].Checksum = checksum
 			},
 			req:     CommandCommitChunk{ChunkID: "ck-1", NodeIDs: []string{"n3"}, Checksum: checksum},
 			wantErr: true,
@@ -97,7 +97,7 @@ func TestHandleCmdEvictChunkFromNode(t *testing.T) {
 			name: "node not in replicas",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "b.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Replicas = []string{"n1", "n2"}
+				m.chunkRegistry["ck-1"].Replicas = []string{"n1", "n2"}
 			},
 			req: CommandEvictChunkFromNode{
 				ChunkID: "ck-1", NodeID: "n3", EvictedAt: now, Reason: "test",
@@ -112,7 +112,7 @@ func TestHandleCmdEvictChunkFromNode(t *testing.T) {
 			name: "evict first replica",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "b.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Replicas = []string{"n1", "n2", "n3"}
+				m.chunkRegistry["ck-1"].Replicas = []string{"n1", "n2", "n3"}
 			},
 			req: CommandEvictChunkFromNode{
 				ChunkID: "ck-1", NodeID: "n1", EvictedAt: now, Reason: "disk-fail",
@@ -128,7 +128,7 @@ func TestHandleCmdEvictChunkFromNode(t *testing.T) {
 			name: "evict last replica",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "b.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Replicas = []string{"n1", "n2", "n3"}
+				m.chunkRegistry["ck-1"].Replicas = []string{"n1", "n2", "n3"}
 			},
 			req: CommandEvictChunkFromNode{
 				ChunkID: "ck-1", NodeID: "n3", EvictedAt: now, Reason: "decom",
@@ -143,7 +143,7 @@ func TestHandleCmdEvictChunkFromNode(t *testing.T) {
 			name: "evict sole replica leaves empty slice",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "b.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Replicas = []string{"n1"}
+				m.chunkRegistry["ck-1"].Replicas = []string{"n1"}
 			},
 			req: CommandEvictChunkFromNode{
 				ChunkID: "ck-1", NodeID: "n1", EvictedAt: now, Reason: "test",
@@ -203,7 +203,7 @@ func TestHandleCmdMarkChunkLost(t *testing.T) {
 			name: "mark complete chunk as lost",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "f1", "c.bin", []string{"ck-1"})
-				m.ChunkRegistry["ck-1"].Status = ChunkStatusComplete
+				m.chunkRegistry["ck-1"].Status = ChunkStatusComplete
 			},
 			req:     CommandMarkChunkLost{ChunkID: "ck-1"},
 			wantErr: false,
