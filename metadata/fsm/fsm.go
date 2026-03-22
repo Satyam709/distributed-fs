@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -899,4 +900,33 @@ func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]*RepairJob, err
 		}
 	}
 	return jobs, nil
+}
+
+// UpdateLastSeen directly updates a node's LastSeen timestamp in memory.
+// This is called by the gRPC heartbeat handler and is NOT a Raft operation —
+// heartbeats are too frequent for the Raft log. Only the death decision
+// (CmdMarkNodeDead) is committed through Raft.
+func (mfsm *MetadataFSM) UpdateLastSeen(nodeID string, ts time.Time) error {
+	mfsm.nrMutex.Lock()
+	defer mfsm.nrMutex.Unlock()
+	node, ok := mfsm.NodeRegistry[nodeID]
+	if !ok {
+		return ErrNodeNotFound
+	}
+	node.LastSeen = ts
+	return nil
+}
+
+// GetAllNodes returns a value-copy of every NodeEntry in the registry,
+// regardless of status. Used by NodeWatcher.sweep() to iterate all nodes
+// without holding the lock for the entire sweep duration.
+func (mfsm *MetadataFSM) GetAllNodes() []NodeEntry {
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+
+	nodes := make([]NodeEntry, 0, len(mfsm.NodeRegistry))
+	for _, node := range mfsm.NodeRegistry {
+		nodes = append(nodes, *node)
+	}
+	return nodes
 }
