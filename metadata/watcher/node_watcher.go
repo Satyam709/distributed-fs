@@ -98,6 +98,7 @@ func (nw *NodeWatcher) Stop() {
 // Only performs work when this node is the Raft leader.
 func (nw *NodeWatcher) sweep() {
 	if !nw.proposer.IsLeader() {
+		nw.logger.Debug("NodeWatcher: sweep failed: Not leader")
 		return
 	}
 
