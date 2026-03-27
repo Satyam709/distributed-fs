@@ -1075,7 +1075,7 @@ func (x *HeartbeatResponse) GetRepairJobs() []*RepairInstruction {
 	return nil
 }
 
-//HeartbeatResponse carries RepairInstruction — repair jobs are piggybacked on heartbeats,
+// HeartbeatResponse carries RepairInstruction — repair jobs are piggybacked on heartbeats,
 // exactly as the plan describes. Storage nodes don't need a separate "poll for work" RPC.
 type RepairInstruction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
