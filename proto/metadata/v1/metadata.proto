@@ -10,7 +10,7 @@ service MetadataService {
   rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
 
-  rpc CommitChunk(CommitChunkRequest) returns (commitChunkResponse);
+  rpc CommitChunk(CommitChunkRequest) returns (CommitChunkResponse);
   rpc GetChunkLocations(GetChunkLocationsRequest) returns (GetChunkLocationsResponse);
   rpc ReportCorruption(ReportCorruptionRequest) returns (ReportCorruptionResponse);
 
@@ -75,7 +75,7 @@ message CommitChunkRequest {
   string checksum = 4; // checksum of the chunk for integrity verification
 }
 
-message commitChunkResponse {
+message CommitChunkResponse {
   bool success = 1;
 }
 

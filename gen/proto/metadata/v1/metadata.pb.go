@@ -1531,7 +1531,7 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12'\n" +
 	"\x0fconfirmed_nodes\x18\x03 \x03(\tR\x0econfirmedNodes\x12\x1a\n" +
 	"\bchecksum\x18\x04 \x01(\tR\bchecksum\"/\n" +
-	"\x13commitChunkResponse\x12\x18\n" +
+	"\x13CommitChunkResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"5\n" +
 	"\x18GetChunkLocationsRequest\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\"N\n" +
@@ -1608,7 +1608,7 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\n" +
 	"DeleteFile\x12$.proto.metadata.v1.DeleteFileRequest\x1a%.proto.metadata.v1.DeleteFileResponse\x12V\n" +
 	"\tListFiles\x12#.proto.metadata.v1.ListFilesRequest\x1a$.proto.metadata.v1.ListFilesResponse\x12\\\n" +
-	"\vCommitChunk\x12%.proto.metadata.v1.CommitChunkRequest\x1a&.proto.metadata.v1.commitChunkResponse\x12n\n" +
+	"\vCommitChunk\x12%.proto.metadata.v1.CommitChunkRequest\x1a&.proto.metadata.v1.CommitChunkResponse\x12n\n" +
 	"\x11GetChunkLocations\x12+.proto.metadata.v1.GetChunkLocationsRequest\x1a,.proto.metadata.v1.GetChunkLocationsResponse\x12k\n" +
 	"\x10ReportCorruption\x12*.proto.metadata.v1.ReportCorruptionRequest\x1a+.proto.metadata.v1.ReportCorruptionResponse\x12_\n" +
 	"\fRegisterNode\x12&.proto.metadata.v1.RegisterNodeRequest\x1a'.proto.metadata.v1.RegisterNodeResponse\x12e\n" +
@@ -1640,7 +1640,7 @@ var file_proto_metadata_v1_metadata_proto_goTypes = []any{
 	(*ListFilesRequest)(nil),            // 7: proto.metadata.v1.ListFilesRequest
 	(*ListFilesResponse)(nil),           // 8: proto.metadata.v1.ListFilesResponse
 	(*CommitChunkRequest)(nil),          // 9: proto.metadata.v1.CommitChunkRequest
-	(*CommitChunkResponse)(nil),         // 10: proto.metadata.v1.commitChunkResponse
+	(*CommitChunkResponse)(nil),         // 10: proto.metadata.v1.CommitChunkResponse
 	(*GetChunkLocationsRequest)(nil),    // 11: proto.metadata.v1.GetChunkLocationsRequest
 	(*GetChunkLocationsResponse)(nil),   // 12: proto.metadata.v1.GetChunkLocationsResponse
 	(*ReportCorruptionRequest)(nil),     // 13: proto.metadata.v1.ReportCorruptionRequest
@@ -1682,7 +1682,7 @@ var file_proto_metadata_v1_metadata_proto_depIdxs = []int32{
 	4,  // 20: proto.metadata.v1.MetadataService.GetFile:output_type -> proto.metadata.v1.GetFileResponse
 	6,  // 21: proto.metadata.v1.MetadataService.DeleteFile:output_type -> proto.metadata.v1.DeleteFileResponse
 	8,  // 22: proto.metadata.v1.MetadataService.ListFiles:output_type -> proto.metadata.v1.ListFilesResponse
-	10, // 23: proto.metadata.v1.MetadataService.CommitChunk:output_type -> proto.metadata.v1.commitChunkResponse
+	10, // 23: proto.metadata.v1.MetadataService.CommitChunk:output_type -> proto.metadata.v1.CommitChunkResponse
 	12, // 24: proto.metadata.v1.MetadataService.GetChunkLocations:output_type -> proto.metadata.v1.GetChunkLocationsResponse
 	14, // 25: proto.metadata.v1.MetadataService.ReportCorruption:output_type -> proto.metadata.v1.ReportCorruptionResponse
 	16, // 26: proto.metadata.v1.MetadataService.RegisterNode:output_type -> proto.metadata.v1.RegisterNodeResponse
