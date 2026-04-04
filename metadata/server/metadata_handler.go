@@ -9,17 +9,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-
 type MetadataServiceHandler struct {
 	pb.UnimplementedMetadataServiceServer
 	raft *raft.Raft
-	fsm *fsm.MetadataFSM
+	fsm  *fsm.MetadataFSM
 }
 
 func NewMetadataServiceHandler(r *raft.Raft, f *fsm.MetadataFSM) *MetadataServiceHandler {
 	return &MetadataServiceHandler{
 		raft: r,
-		fsm: f,
+		fsm:  f,
 	}
 }
 
@@ -28,7 +27,7 @@ func (h *MetadataServiceHandler) isLeader() bool {
 	return metadata.IsLeader(h.raft)
 }
 
-func (h *MetadataServiceHandler) leaderRedirect() error{
+func (h *MetadataServiceHandler) leaderRedirect() error {
 	addr := metadata.LeaderAddress(h.raft)
 	if addr == "" {
 		return status.Error(codes.Unavailable, "no leader elected yet")
