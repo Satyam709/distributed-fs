@@ -71,7 +71,7 @@ func TestHandleCmdCreateFile(t *testing.T) {
 			name: "reject when chunk ID collides with existing registry",
 			setup: func(m *MetadataFSM) {
 				// pre-populate a chunk that conflicts
-				m.ChunkRegistry["ck-dup"] = &ChunkRecord{ChunkID: "ck-dup"}
+				m.chunkRegistry["ck-dup"] = &ChunkRecord{ChunkID: "ck-dup"}
 			},
 			req: CommandCreateFile{
 				FileID:   "file-2",
@@ -141,7 +141,7 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "filesize mismatch",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{})
-				m.FileIndex["file-1"].CheckSum = checksum
+				m.fileIndex["file-1"].CheckSum = checksum
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 999, Checksum: checksum},
 			wantErr: true,
@@ -154,7 +154,7 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "checksum mismatch",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{})
-				m.FileIndex["file-1"].CheckSum = checksum
+				m.fileIndex["file-1"].CheckSum = checksum
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: []byte{0xFF}},
 			wantErr: true,
@@ -167,7 +167,7 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "chunk not in complete status",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{"ck-1"})
-				m.FileIndex["file-1"].CheckSum = checksum
+				m.fileIndex["file-1"].CheckSum = checksum
 				// chunk is still in RequestAllocation status
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: checksum},
@@ -181,9 +181,9 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "successful commit with all chunks complete",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{"ck-1", "ck-2"})
-				m.FileIndex["file-1"].CheckSum = checksum
-				m.ChunkRegistry["ck-1"].Status = ChunkStatusComplete
-				m.ChunkRegistry["ck-2"].Status = ChunkStatusComplete
+				m.fileIndex["file-1"].CheckSum = checksum
+				m.chunkRegistry["ck-1"].Status = ChunkStatusComplete
+				m.chunkRegistry["ck-2"].Status = ChunkStatusComplete
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: checksum},
 			wantErr: false,
@@ -196,8 +196,8 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "commit file with zero chunks",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-e", "empty.bin", []string{})
-				m.FileIndex["file-e"].CheckSum = checksum
-				m.FileIndex["file-e"].FileSize = 0
+				m.fileIndex["file-e"].CheckSum = checksum
+				m.fileIndex["file-e"].FileSize = 0
 			},
 			req:     CommandCommitFile{FileID: "file-e", FileSize: 0, Checksum: checksum},
 			wantErr: false,

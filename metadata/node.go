@@ -10,6 +10,7 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"github.com/satyam709/distributed-fs/metadata/watcher"
 	"google.golang.org/grpc"
 )
 
@@ -20,6 +21,7 @@ type MetadataNode struct {
 	logStore     raft.LogStore
 	fsm          raft.FSM
 	raftInstance *raft.Raft
+	watcher      *watcher.NodeWatcher
 	server       *grpc.Server
 }
 

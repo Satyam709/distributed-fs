@@ -35,7 +35,7 @@ func makeRaftLog(t *testing.T, cmdType MetadataCmdType, payload any) *raft.Log {
 func seedNode(t *testing.T, m *MetadataFSM, id, addr string) {
 	t.Helper()
 	now := time.Now()
-	m.NodeRegistry[id] = &NodeEntry{
+	m.nodeRegistry[id] = &NodeEntry{
 		NodeID:       id,
 		Address:      addr,
 		Status:       NodeStatusAlive,
@@ -49,7 +49,7 @@ func seedNode(t *testing.T, m *MetadataFSM, id, addr string) {
 // seedFile inserts a file record and its associated chunks.
 func seedFile(t *testing.T, m *MetadataFSM, fileID, name string, chunkIDs []string) {
 	t.Helper()
-	m.FileIndex[fileID] = &FileRecord{
+	m.fileIndex[fileID] = &FileRecord{
 		FileID:    fileID,
 		Filename:  name,
 		FileSize:  100,
@@ -58,7 +58,7 @@ func seedFile(t *testing.T, m *MetadataFSM, fileID, name string, chunkIDs []stri
 		CreatedAt: time.Now(),
 	}
 	for i, cid := range chunkIDs {
-		m.ChunkRegistry[cid] = &ChunkRecord{
+		m.chunkRegistry[cid] = &ChunkRecord{
 			ChunkID:    cid,
 			FileID:     fileID,
 			ChunkIndex: i,
@@ -71,7 +71,7 @@ func seedFile(t *testing.T, m *MetadataFSM, fileID, name string, chunkIDs []stri
 func seedRepairJob(t *testing.T, m *MetadataFSM, jobID string) {
 	t.Helper()
 	now := time.Now()
-	m.RepairJobRegistry[jobID] = &RepairJob{
+	m.repairJobRegistry[jobID] = &RepairJob{
 		JobID:     jobID,
 		Status:    RepairStatusPending,
 		CreatedAt: now,

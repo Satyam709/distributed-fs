@@ -107,7 +107,7 @@ func TestHandleCmdDeregisterNode(t *testing.T) {
 			name: "deregister existing node sets status draining and advances timestamp",
 			setup: func(m *MetadataFSM) {
 				seedNode(t, m, "node-1", "addr:9000")
-				m.NodeRegistry["node-1"].UpdatedAt = baseTime
+				m.nodeRegistry["node-1"].UpdatedAt = baseTime
 			},
 			req:     CommandDeregisterNode{NodeID: "node-1", UpdatedAt: baseTime.Add(time.Hour)},
 			wantErr: false,
@@ -122,7 +122,7 @@ func TestHandleCmdDeregisterNode(t *testing.T) {
 			name: "deregister with older timestamp does not regress UpdatedAt",
 			setup: func(m *MetadataFSM) {
 				seedNode(t, m, "node-1", "addr:9000")
-				m.NodeRegistry["node-1"].UpdatedAt = baseTime.Add(2 * time.Hour)
+				m.nodeRegistry["node-1"].UpdatedAt = baseTime.Add(2 * time.Hour)
 			},
 			req:     CommandDeregisterNode{NodeID: "node-1", UpdatedAt: baseTime},
 			wantErr: false,
@@ -176,7 +176,7 @@ func TestHandleCmdMarkNodeDead(t *testing.T) {
 			name: "marks alive node as dead",
 			setup: func(m *MetadataFSM) {
 				seedNode(t, m, "node-2", "addr:8000")
-				m.NodeRegistry["node-2"].UpdatedAt = baseTime
+				m.nodeRegistry["node-2"].UpdatedAt = baseTime
 			},
 			req:     CommandMarkNodeDead{NodeID: "node-2", UpdatedAt: baseTime.Add(5 * time.Minute)},
 			wantErr: false,
@@ -225,8 +225,8 @@ func TestHandleCmdMarkNodeAlive(t *testing.T) {
 			name: "revive dead node",
 			setup: func(m *MetadataFSM) {
 				seedNode(t, m, "node-3", "addr:7000")
-				m.NodeRegistry["node-3"].Status = NodeStatusDead
-				m.NodeRegistry["node-3"].UpdatedAt = baseTime
+				m.nodeRegistry["node-3"].Status = NodeStatusDead
+				m.nodeRegistry["node-3"].UpdatedAt = baseTime
 			},
 			req:     CommandMarkNodeAlive{NodeID: "node-3", UpdatedAt: baseTime.Add(10 * time.Minute)},
 			wantErr: false,
@@ -275,7 +275,7 @@ func TestHandleCmdUpdateNodeSpace(t *testing.T) {
 			name: "update space and chunk count",
 			setup: func(m *MetadataFSM) {
 				seedNode(t, m, "node-4", "addr:6000")
-				m.NodeRegistry["node-4"].UpdatedAt = baseTime
+				m.nodeRegistry["node-4"].UpdatedAt = baseTime
 			},
 			req: CommandUpdateNodeSpace{
 				NodeID: "node-4", FreeSpace: 512, ChunkCount: 42,

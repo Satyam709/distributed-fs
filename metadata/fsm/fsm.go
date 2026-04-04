@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -27,13 +28,13 @@ import (
 type MetadataFSM struct {
 	logger            *logging.CLogger
 	fiMutex           sync.RWMutex
-	FileIndex         map[string]*FileRecord // file_id → file metadata
+	fileIndex         map[string]*FileRecord // file_id → file metadata
 	crMutex           sync.RWMutex
-	ChunkRegistry     map[string]*ChunkRecord // chunk_id → chunk metadata + replica list
+	chunkRegistry     map[string]*ChunkRecord // chunk_id → chunk metadata + replica list
 	nrMutex           sync.RWMutex
-	NodeRegistry      map[string]*NodeEntry // node_id → storage-node info + status
+	nodeRegistry      map[string]*NodeEntry // node_id → storage-node info + status
 	jrMutex           sync.RWMutex
-	RepairJobRegistry map[string]*RepairJob // job_id → repair job state
+	repairJobRegistry map[string]*RepairJob // job_id → repair job state
 }
 
 var _ raft.FSMSnapshot = &MetadataFSMSnapshot{}
@@ -51,27 +52,27 @@ type MetadataFSMSnapshot struct {
 func (fsms *MetadataFSMSnapshot) RestoreFSM(logger *logging.CLogger) *MetadataFSM {
 	newFSM := &MetadataFSM{
 		logger:            logger,
-		FileIndex:         make(map[string]*FileRecord, len(fsms.FileIndex)),
-		ChunkRegistry:     make(map[string]*ChunkRecord, len(fsms.ChunkRegistry)),
-		NodeRegistry:      make(map[string]*NodeEntry, len(fsms.NodeRegistry)),
-		RepairJobRegistry: make(map[string]*RepairJob, len(fsms.RepairJobRegistry)),
+		fileIndex:         make(map[string]*FileRecord, len(fsms.FileIndex)),
+		chunkRegistry:     make(map[string]*ChunkRecord, len(fsms.ChunkRegistry)),
+		nodeRegistry:      make(map[string]*NodeEntry, len(fsms.NodeRegistry)),
+		repairJobRegistry: make(map[string]*RepairJob, len(fsms.RepairJobRegistry)),
 	}
 
 	for k, v := range fsms.FileIndex {
 		copy := v // copy the value so each entry gets its own allocation
-		newFSM.FileIndex[k] = &copy
+		newFSM.fileIndex[k] = &copy
 	}
 	for k, v := range fsms.ChunkRegistry {
 		copy := v
-		newFSM.ChunkRegistry[k] = &copy
+		newFSM.chunkRegistry[k] = &copy
 	}
 	for k, v := range fsms.NodeRegistry {
 		copy := v
-		newFSM.NodeRegistry[k] = &copy
+		newFSM.nodeRegistry[k] = &copy
 	}
 	for k, v := range fsms.RepairJobRegistry {
 		copy := v
-		newFSM.RepairJobRegistry[k] = &copy
+		newFSM.repairJobRegistry[k] = &copy
 	}
 
 	return newFSM
@@ -126,10 +127,10 @@ var (
 func NewEmptyMetadataFsm(logger *logging.CLogger) *MetadataFSM {
 	return &MetadataFSM{
 		logger:            logger,
-		FileIndex:         map[string]*FileRecord{},
-		ChunkRegistry:     map[string]*ChunkRecord{},
-		NodeRegistry:      map[string]*NodeEntry{},
-		RepairJobRegistry: map[string]*RepairJob{},
+		fileIndex:         map[string]*FileRecord{},
+		chunkRegistry:     map[string]*ChunkRecord{},
+		nodeRegistry:      map[string]*NodeEntry{},
+		repairJobRegistry: map[string]*RepairJob{},
 	}
 }
 
@@ -263,10 +264,10 @@ func (mfsm *MetadataFSM) Snapshot() (raft.FSMSnapshot, error) {
 	mfsm.jrMutex.RLock()
 	mfsm.nrMutex.RLock()
 
-	fiCopy := utils.DeepCopy(mfsm.FileIndex)
-	crCopy := utils.DeepCopy(mfsm.ChunkRegistry)
-	nrCopy := utils.DeepCopy(mfsm.NodeRegistry)
-	jrCopy := utils.DeepCopy(mfsm.RepairJobRegistry)
+	fiCopy := utils.DeepCopy(mfsm.fileIndex)
+	crCopy := utils.DeepCopy(mfsm.chunkRegistry)
+	nrCopy := utils.DeepCopy(mfsm.nodeRegistry)
+	jrCopy := utils.DeepCopy(mfsm.repairJobRegistry)
 
 	mfsm.crMutex.RUnlock()
 	mfsm.fiMutex.RUnlock()
@@ -308,19 +309,19 @@ func (mfsm *MetadataFSM) Restore(snapshot io.ReadCloser) error {
 
 	// Swap all registries under write locks.
 	mfsm.fiMutex.Lock()
-	mfsm.FileIndex = restored.FileIndex
+	mfsm.fileIndex = restored.fileIndex
 	mfsm.fiMutex.Unlock()
 
 	mfsm.crMutex.Lock()
-	mfsm.ChunkRegistry = restored.ChunkRegistry
+	mfsm.chunkRegistry = restored.chunkRegistry
 	mfsm.crMutex.Unlock()
 
 	mfsm.nrMutex.Lock()
-	mfsm.NodeRegistry = restored.NodeRegistry
+	mfsm.nodeRegistry = restored.nodeRegistry
 	mfsm.nrMutex.Unlock()
 
 	mfsm.jrMutex.Lock()
-	mfsm.RepairJobRegistry = restored.RepairJobRegistry
+	mfsm.repairJobRegistry = restored.repairJobRegistry
 	mfsm.jrMutex.Unlock()
 
 	return nil
@@ -359,7 +360,7 @@ func (mfsm *MetadataFSM) handleCmdRegisterNode(req CommandRegisterNode) error {
 			ChunkCount:   req.ChunkCount,
 		}
 	}
-	return upsert(&mfsm.nrMutex, mfsm.NodeRegistry, node.NodeID, node)
+	return upsert(&mfsm.nrMutex, mfsm.nodeRegistry, node.NodeID, node)
 }
 
 // handleCmdDeregisterNode marks a storage node as "draining".
@@ -477,20 +478,20 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 	mfsm.crMutex.Lock()
 	// Pass 1 — verify no collisions.
 	for _, val := range chunkRecords {
-		if _, ok := mfsm.ChunkRegistry[val.ChunkID]; ok {
+		if _, ok := mfsm.chunkRegistry[val.ChunkID]; ok {
 			mfsm.crMutex.Unlock()
 			return errors.New("CmdCreateFile: chunkID already exists in our systems, unsupported")
 		}
 	}
 	// Pass 2 — insert all chunks.
 	for _, val := range chunkRecords {
-		mfsm.ChunkRegistry[val.ChunkID] = val
+		mfsm.chunkRegistry[val.ChunkID] = val
 	}
 	mfsm.crMutex.Unlock()
 
 	mfsm.fiMutex.Lock()
 	defer mfsm.fiMutex.Unlock()
-	mfsm.FileIndex[req.FileID] = file
+	mfsm.fileIndex[req.FileID] = file
 
 	return nil
 }
@@ -519,7 +520,7 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 	// Validate that every chunk has been fully replicated and committed.
 	mfsm.crMutex.Lock()
 	for _, cid := range file.ChunkIDs {
-		ck, ok := mfsm.ChunkRegistry[cid]
+		ck, ok := mfsm.chunkRegistry[cid]
 		if !ok {
 			mfsm.crMutex.Unlock()
 			err := errors.New("cmdCommitFile: chunk validation failed : chunk not found")
@@ -649,7 +650,7 @@ func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) er
 		CreatedAt:    req.CreatedAt,
 		UpdatedAt:    req.CreatedAt,
 	}
-	return upsert(&mfsm.jrMutex, mfsm.RepairJobRegistry, req.JobID, newJob)
+	return upsert(&mfsm.jrMutex, mfsm.repairJobRegistry, req.JobID, newJob)
 }
 
 // handleCmdUpdateRepairJob mutates an existing repair job's status,
@@ -699,7 +700,7 @@ func upsert[T any](mu sync.Locker, registry map[string]T, key string, entry T) e
 func (mfsm *MetadataFSM) GetFile(fileID string) (*FileRecord, error) {
 	mfsm.fiMutex.RLock()
 	defer mfsm.fiMutex.RUnlock()
-	file, ok := mfsm.FileIndex[fileID]
+	file, ok := mfsm.fileIndex[fileID]
 	if !ok {
 		return nil, ErrFileNotFound
 	}
@@ -713,7 +714,7 @@ func (mfsm *MetadataFSM) GetFile(fileID string) (*FileRecord, error) {
 func (mfsm *MetadataFSM) GetFileByName(filename string) (*FileRecord, error) {
 	mfsm.fiMutex.RLock()
 	defer mfsm.fiMutex.RUnlock()
-	for _, file := range mfsm.FileIndex {
+	for _, file := range mfsm.fileIndex {
 		if file.Filename == filename {
 			return file, nil
 		}
@@ -728,7 +729,7 @@ func (mfsm *MetadataFSM) ListFiles(prefix string) ([]*FileRecord, error) {
 	mfsm.fiMutex.RLock()
 	defer mfsm.fiMutex.RUnlock()
 	result := make([]*FileRecord, 0)
-	for _, file := range mfsm.FileIndex {
+	for _, file := range mfsm.fileIndex {
 		if strings.HasPrefix(file.Filename, prefix) {
 			result = append(result, file)
 		}
@@ -752,7 +753,7 @@ func (mfsm *MetadataFSM) GetFileChunks(fileID string) ([]*ChunkRecord, error) {
 
 	chunks := make([]*ChunkRecord, 0, len(file.ChunkIDs))
 	for _, cid := range file.ChunkIDs {
-		ck, ok := mfsm.ChunkRegistry[cid]
+		ck, ok := mfsm.chunkRegistry[cid]
 		if !ok {
 			return nil, ErrChunkNotFound
 		}
@@ -768,7 +769,7 @@ func (mfsm *MetadataFSM) GetFileChunks(fileID string) ([]*ChunkRecord, error) {
 func (mfsm *MetadataFSM) GetChunk(chunkID string) (*ChunkRecord, error) {
 	mfsm.crMutex.RLock()
 	defer mfsm.crMutex.RUnlock()
-	chunk, ok := mfsm.ChunkRegistry[chunkID]
+	chunk, ok := mfsm.chunkRegistry[chunkID]
 	if !ok {
 		return nil, ErrChunkNotFound
 	}
@@ -789,7 +790,7 @@ func (mfsm *MetadataFSM) GetChunkLocations(chunkID string) ([]NodeEntry, error) 
 
 	nodes := make([]NodeEntry, 0, len(chunk.Replicas))
 	for _, nodeID := range chunk.Replicas {
-		node, ok := mfsm.NodeRegistry[nodeID]
+		node, ok := mfsm.nodeRegistry[nodeID]
 		if !ok {
 			continue // node removed from registry
 		}
@@ -808,7 +809,7 @@ func (mfsm *MetadataFSM) GetChunksByNode(nodeID string) ([]string, error) {
 	defer mfsm.crMutex.RUnlock()
 
 	var chunkIDs []string
-	for _, chunk := range mfsm.ChunkRegistry {
+	for _, chunk := range mfsm.chunkRegistry {
 		for _, nid := range chunk.Replicas {
 			if nid == nodeID {
 				chunkIDs = append(chunkIDs, chunk.ChunkID)
@@ -826,7 +827,7 @@ func (mfsm *MetadataFSM) GetChunksByNode(nodeID string) ([]string, error) {
 func (mfsm *MetadataFSM) GetNode(nodeID string) (*NodeEntry, error) {
 	mfsm.nrMutex.RLock()
 	defer mfsm.nrMutex.RUnlock()
-	node, ok := mfsm.NodeRegistry[nodeID]
+	node, ok := mfsm.nodeRegistry[nodeID]
 	if !ok {
 		return nil, ErrNodeNotFound
 	}
@@ -839,7 +840,7 @@ func (mfsm *MetadataFSM) GetLiveNodes() ([]NodeEntry, error) {
 	defer mfsm.nrMutex.RUnlock()
 
 	nodes := make([]NodeEntry, 0)
-	for _, node := range mfsm.NodeRegistry {
+	for _, node := range mfsm.nodeRegistry {
 		if node.Status == NodeStatusAlive {
 			nodes = append(nodes, *node)
 		}
@@ -852,7 +853,7 @@ func (mfsm *MetadataFSM) GetLiveNodes() ([]NodeEntry, error) {
 func (mfsm *MetadataFSM) GetNodeCount() int {
 	mfsm.nrMutex.RLock()
 	defer mfsm.nrMutex.RUnlock()
-	return len(mfsm.NodeRegistry)
+	return len(mfsm.nodeRegistry)
 }
 
 // Repair reads
@@ -862,7 +863,7 @@ func (mfsm *MetadataFSM) GetNodeCount() int {
 func (mfsm *MetadataFSM) GetRepairJob(jobID string) (*RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
-	job, ok := mfsm.RepairJobRegistry[jobID]
+	job, ok := mfsm.repairJobRegistry[jobID]
 	if !ok {
 		return nil, ErrJobNotFound
 	}
@@ -877,7 +878,7 @@ func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]*RepairJob, err
 	defer mfsm.jrMutex.RUnlock()
 
 	var jobs []*RepairJob
-	for _, job := range mfsm.RepairJobRegistry {
+	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == status {
 			jobs = append(jobs, job)
 		}
@@ -893,10 +894,39 @@ func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]*RepairJob, err
 	defer mfsm.jrMutex.RUnlock()
 
 	var jobs []*RepairJob
-	for _, job := range mfsm.RepairJobRegistry {
+	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == RepairStatusPending && job.SourceNodeID == nodeID {
 			jobs = append(jobs, job)
 		}
 	}
 	return jobs, nil
+}
+
+// UpdateLastSeen directly updates a node's LastSeen timestamp in memory.
+// This is called by the gRPC heartbeat handler and is NOT a Raft operation —
+// heartbeats are too frequent for the Raft log. Only the death decision
+// (CmdMarkNodeDead) is committed through Raft.
+func (mfsm *MetadataFSM) UpdateLastSeen(nodeID string, ts time.Time) error {
+	mfsm.nrMutex.Lock()
+	defer mfsm.nrMutex.Unlock()
+	node, ok := mfsm.nodeRegistry[nodeID]
+	if !ok {
+		return ErrNodeNotFound
+	}
+	node.LastSeen = ts
+	return nil
+}
+
+// GetAllNodes returns a value-copy of every NodeEntry in the registry,
+// regardless of status. Used by NodeWatcher.sweep() to iterate all nodes
+// without holding the lock for the entire sweep duration.
+func (mfsm *MetadataFSM) GetAllNodes() []NodeEntry {
+	mfsm.nrMutex.RLock()
+	defer mfsm.nrMutex.RUnlock()
+
+	nodes := make([]NodeEntry, 0, len(mfsm.nodeRegistry))
+	for _, node := range mfsm.nodeRegistry {
+		nodes = append(nodes, *node)
+	}
+	return nodes
 }
