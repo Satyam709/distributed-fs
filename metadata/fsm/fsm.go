@@ -873,14 +873,14 @@ func (mfsm *MetadataFSM) GetRepairJob(jobID string) (*RepairJob, error) {
 // GetJobsByStatus returns all repair jobs matching the given status.
 // Used for crash recovery (e.g. finding all InProgress jobs after
 // leader failover).
-func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]*RepairJob, error) {
+func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 
-	var jobs []*RepairJob
+	var jobs []RepairJob
 	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == status {
-			jobs = append(jobs, job)
+			jobs = append(jobs, *job)
 		}
 	}
 	return jobs, nil

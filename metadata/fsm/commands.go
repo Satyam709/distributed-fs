@@ -168,19 +168,26 @@ type CommandMarkChunkLost struct {
 // Repair-job commands
 
 // CommandCreateRepairJob creates a new repair job in pending state.
+// TargetNode=nil, is used to indicate that its a nil replication
+// used with DeleteSource = true, in overreplicated chunks case
 type CommandCreateRepairJob struct {
-	JobID     string    `json:"job_id"`
-	CreatedAt time.Time `json:"created_at"`
+	JobID        string    `json:"job_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	ChunkID      string    `json:"chunk_id"`
+	DeleteSource bool      `json:"delete_source"`
+	SourceNode   string    `json:"source_node"`
+	TargetNode   string    `json:"target_node"`
 }
 
 // CommandUpdateRepairJob mutates an existing repair job's status,
 // attempt counter, and optional error message.
 type CommandUpdateRepairJob struct {
-	JobID     string       `json:"job_id"`
-	Status    RepairStatus `json:"status"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Attempts  uint64       `json:"attempts"`
-	Error     string       `json:"error"` // empty on success
+	JobID      string       `json:"job_id"`
+	Status     RepairStatus `json:"status"`
+	SourceNode string       `json:"source_node"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	Attempts   uint64       `json:"attempts"`
+	Error      string       `json:"error"` // empty on success
 }
 
 // Propose serialises the given MetadataCommand and submits it to the
