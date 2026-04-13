@@ -15,15 +15,13 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, h.leaderRedirect()
 	}
 	// check duplicate filename
-	_, err := h.fsm.GetFileByName(req.FileName)
+	_, err := h.fsm.GetFile(req.FileId)
 	if err == nil {
-		return nil, status.Errorf(codes.AlreadyExists, "file with name '%s' already exists", req.FileName)
+		return nil, status.Errorf(codes.AlreadyExists, "file with ID '%s' already exists", req.FileId)
 	}
 
-	//generate server-side file ID
-	fileID := generateID()
 	cmd, err := newCommand(fsm.CmdCreateFile, fsm.CommandCreateFile{
-		FileID:    fileID,
+		FileID:    req.FileId,
 		FileName:  req.FileName,
 		FileSize:  uint64(req.FileSize),
 		ChunkIDs:  req.ChunkIds,
@@ -37,7 +35,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, status.Errorf(codes.Internal, "error proposing command: %v", err)
 	}
 
-	return &pb.CreateFileResponse{FileId: fileID}, nil
+	return &pb.CreateFileResponse{FileId: req.FileId}, nil
 }
 
 func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileRequest) (*pb.GetFileResponse, error) {
@@ -127,7 +125,8 @@ func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFile
 		return nil, h.leaderRedirect()
 	}
 	// direct fsm read - rsults already sorted by fileName
-	files, err := h.fsm.ListFiles(req.Prefix)
+	// files, err := h.fsm.ListFiles(req.Prefix)
+	files, err := h.fsm.ListFiles("") // ignore prefix filter for now
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error listing files: %v", err)
 	}

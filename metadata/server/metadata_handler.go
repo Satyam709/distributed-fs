@@ -3,7 +3,7 @@ package server
 import (
 	"github.com/hashicorp/raft"
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
-	"github.com/satyam709/distributed-fs/metadata"
+	"github.com/satyam709/distributed-fs/internal/raftutil"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,11 +24,11 @@ func NewMetadataServiceHandler(r *raft.Raft, f *fsm.MetadataFSM) *MetadataServic
 
 // isLeader checks if the current node is the leader of the Raft cluster.
 func (h *MetadataServiceHandler) isLeader() bool {
-	return metadata.IsLeader(h.raft)
+	return raftutil.IsLeader(h.raft)
 }
 
 func (h *MetadataServiceHandler) leaderRedirect() error {
-	addr := metadata.LeaderAddress(h.raft)
+	addr := raftutil.LeaderAddress(h.raft)
 	if addr == "" {
 		return status.Error(codes.Unavailable, "no leader elected yet")
 	}

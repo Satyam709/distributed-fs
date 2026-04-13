@@ -23,10 +23,11 @@ const (
 
 type CreateFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FileName      string                 `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
-	FileSize      int64                  `protobuf:"varint,2,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"`
-	ChunkSize     int64                  `protobuf:"varint,3,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
-	ChunkIds      []string               `protobuf:"bytes,4,rep,name=chunk_ids,json=chunkIds,proto3" json:"chunk_ids,omitempty"` // ordered list of chunk IDs
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"` // client provides this — uniqueness is client's responsibility
+	FileName      string                 `protobuf:"bytes,2,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	FileSize      int64                  `protobuf:"varint,3,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"`
+	ChunkSize     int64                  `protobuf:"varint,4,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
+	ChunkIds      []string               `protobuf:"bytes,5,rep,name=chunk_ids,json=chunkIds,proto3" json:"chunk_ids,omitempty"` // ordered list of chunk IDs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,6 +60,13 @@ func (x *CreateFileRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CreateFileRequest.ProtoReflect.Descriptor instead.
 func (*CreateFileRequest) Descriptor() ([]byte, []int) {
 	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreateFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
 }
 
 func (x *CreateFileRequest) GetFileName() string {
@@ -492,7 +500,6 @@ func (x *CommitFileResponse) GetSuccess() bool {
 
 type ListFilesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"` // optional filter by file name prefix
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -525,13 +532,6 @@ func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
 func (*ListFilesRequest) Descriptor() ([]byte, []int) {
 	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *ListFilesRequest) GetPrefix() string {
-	if x != nil {
-		return x.Prefix
-	}
-	return ""
 }
 
 type ListFilesResponse struct {
@@ -1601,13 +1601,14 @@ var File_proto_metadata_v1_metadata_proto protoreflect.FileDescriptor
 
 const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\n" +
-	" proto/metadata/v1/metadata.proto\x12\x11proto.metadata.v1\"\x89\x01\n" +
-	"\x11CreateFileRequest\x12\x1b\n" +
-	"\tfile_name\x18\x01 \x01(\tR\bfileName\x12\x1b\n" +
-	"\tfile_size\x18\x02 \x01(\x03R\bfileSize\x12\x1d\n" +
+	" proto/metadata/v1/metadata.proto\x12\x11proto.metadata.v1\"\xa2\x01\n" +
+	"\x11CreateFileRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1b\n" +
+	"\tfile_name\x18\x02 \x01(\tR\bfileName\x12\x1b\n" +
+	"\tfile_size\x18\x03 \x01(\x03R\bfileSize\x12\x1d\n" +
 	"\n" +
-	"chunk_size\x18\x03 \x01(\x03R\tchunkSize\x12\x1b\n" +
-	"\tchunk_ids\x18\x04 \x03(\tR\bchunkIds\"p\n" +
+	"chunk_size\x18\x04 \x01(\x03R\tchunkSize\x12\x1b\n" +
+	"\tchunk_ids\x18\x05 \x03(\tR\bchunkIds\"p\n" +
 	"\x12CreateFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12A\n" +
 	"\n" +
@@ -1631,9 +1632,8 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\tfile_size\x18\x02 \x01(\x03R\bfileSize\x12\x1a\n" +
 	"\bchecksum\x18\x03 \x01(\fR\bchecksum\".\n" +
 	"\x12CommitFileResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"*\n" +
-	"\x10ListFilesRequest\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"F\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x12\n" +
+	"\x10ListFilesRequest\"F\n" +
 	"\x11ListFilesResponse\x121\n" +
 	"\x05files\x18\x01 \x03(\v2\x1b.proto.metadata.v1.FileInfoR\x05files\"\x8d\x01\n" +
 	"\x12CommitChunkRequest\x12\x19\n" +
