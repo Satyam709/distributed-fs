@@ -635,8 +635,10 @@ func (mfsm *MetadataFSM) handleCmdMarkChunkLost(req CommandMarkChunkLost) error 
 // they will be populated by the RepairScheduler in a follow-up
 // CmdUpdateRepairJob once placement has been decided.
 func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) error {
-	_, err := mfsm.GetRepairJob(req.JobID)
-	if err == nil {
+	mfsm.jrMutex.RLock()
+	_, exists := mfsm.repairJobRegistry[req.JobID]
+	mfsm.jrMutex.RUnlock()
+	if exists {
 		return errors.New("cmdCreateRepairJob: job already exists")
 	}
 
@@ -657,12 +659,12 @@ func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) er
 // attempt counter, and optional error message. Used by the gRPC handler
 // when a storage node reports repair completion or failure.
 func (mfsm *MetadataFSM) handleCmdUpdateRepairJob(req CommandUpdateRepairJob) error {
-	job, err := mfsm.GetRepairJob(req.JobID)
-	if err != nil {
-		return errors.Join(errors.New("cmdUpdateRepairJob: "), err)
-	}
 	mfsm.jrMutex.Lock()
 	defer mfsm.jrMutex.Unlock()
+	job, ok := mfsm.repairJobRegistry[req.JobID]
+	if !ok {
+		return errors.Join(errors.New("cmdUpdateRepairJob: "), ErrJobNotFound)
+	}
 	job.Status = req.Status
 	job.UpdatedAt = req.UpdatedAt
 	job.Error = req.Error
@@ -859,15 +861,16 @@ func (mfsm *MetadataFSM) GetNodeCount() int {
 // Repair reads
 
 // GetRepairJob performs a read-locked lookup of a RepairJob by job ID.
+// Returns a value copy so callers cannot mutate FSM state directly.
 // Returns ErrJobNotFound if the job is not in the registry.
-func (mfsm *MetadataFSM) GetRepairJob(jobID string) (*RepairJob, error) {
+func (mfsm *MetadataFSM) GetRepairJob(jobID string) (RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 	job, ok := mfsm.repairJobRegistry[jobID]
 	if !ok {
-		return nil, ErrJobNotFound
+		return RepairJob{}, ErrJobNotFound
 	}
-	return job, nil
+	return *job, nil
 }
 
 // GetJobsByStatus returns all repair jobs matching the given status.
@@ -886,17 +889,17 @@ func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]RepairJob, erro
 	return jobs, nil
 }
 
-// GetPendingJobsForNode returns all pending repair jobs where the given
-// node is the source. Used by the heartbeat handler to piggyback repair
-// instructions onto heartbeat responses.
-func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]*RepairJob, error) {
+// GetPendingJobsForNode returns value copies of all pending repair jobs
+// where the given node is the source. Used by the heartbeat handler to
+// piggyback repair instructions onto heartbeat responses.
+func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 
-	var jobs []*RepairJob
+	var jobs []RepairJob
 	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == RepairStatusPending && job.SourceNodeID == nodeID {
-			jobs = append(jobs, job)
+			jobs = append(jobs, *job)
 		}
 	}
 	return jobs, nil
@@ -929,4 +932,15 @@ func (mfsm *MetadataFSM) GetAllNodes() []NodeEntry {
 		nodes = append(nodes, *node)
 	}
 	return nodes
+}
+
+// Proposes the new status through raft
+func (mfsm *MetadataFSM) UpdateRepairJobStatus(raft *raft.Raft, jobid string, status RepairStatus) error {
+	updateJob := CommandUpdateRepairJob{JobID: jobid, Status: status, UpdatedAt: time.Now()}
+	payload, err := json.Marshal(updateJob)
+	if err != nil {
+		return err
+	}
+	cmd := MetadataCommand{Type: CmdUpdateRepairJob, Payload: payload}
+	return Propose(raft, cmd)
 }
