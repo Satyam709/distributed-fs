@@ -1,4 +1,4 @@
-// client/cmd/main.go
+// client/cmd/main.go — CLI entrypoint. Thin glue over service layer.
 package main
 
 import (
@@ -6,135 +6,254 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/satyam709/distributed-fs/client" // Import your config package
-	"github.com/satyam709/distributed-fs/client/chunker"
+	"github.com/satyam709/distributed-fs/client"
 	"github.com/satyam709/distributed-fs/client/manifest"
-	"github.com/satyam709/distributed-fs/client/uploader"
-	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
+	"github.com/satyam709/distributed-fs/client/metadataclient"
+	"github.com/satyam709/distributed-fs/client/service"
+	"github.com/satyam709/distributed-fs/client/storageclient"
 )
 
 var cfg = client.LoadFromEnv()
 
+// --- Upload Command ---
+
 var uploadCmd = &cobra.Command{
-	Use:   "upload [file path]",
+	Use:   "upload",
 	Short: "Upload a file to the distributed FS",
-	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		filePath := args[0]
+		filePath, _ := cmd.Flags().GetString("file")
+		fileName, _ := cmd.Flags().GetString("name")
 
-		// Ensure manifest directory exists
-		if err := os.MkdirAll(cfg.ManifestDir, 0755); err != nil {
-			log.Fatalf("Failed to create manifest directory: %v", err)
+		if filePath == "" {
+			log.Fatal("--file is required")
 		}
-
-		// 1. Chunker: Use ChunkSize from Config
-		descriptors, err := chunker.GenerateDescriptors(filePath, cfg.ChunkSize)
-		if err != nil {
-			log.Fatalf("Failed to chunk file: %v", err)
+		if fileName == "" {
+			// Default to base name of the file
+			fileName = filePath
 		}
 
-		// 2. Manifest: Setup
-		fileInfo, err := os.Stat(filePath)
-		if err != nil {
-			log.Fatalf("Failed to stat file: %v", err)
-		}
-		m := &manifest.UploadManifest{
-			FileID:      descriptors[0].FileID,
-			Filename:    filePath,
-			TotalSize:   fileInfo.Size(),
-			ChunkStatus: make(map[string]bool),
-		}
-		for _, d := range descriptors {
-			m.ChunkStatus[d.ChunkID] = false
-		}
+		meta, storage, cleanup := connect()
+		defer cleanup()
 
-		if err := manifest.Save(cfg.ManifestDir, m); err != nil {
-			log.Fatalf("Failed to save manifest: %v", err)
-		}
+		mgr := manifest.NewManager(cfg.ManifestDir)
+		svc := service.NewUploadService(cfg, meta, storage, mgr)
 
-		// 3. Storage Connection (Using dummy address for now)
-		conn, err := grpc.NewClient("localhost:4000", grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			log.Fatalf("Failed to connect to storage: %v", err)
-		}
-		defer func() {
-			if err := conn.Close(); err != nil {
-				log.Printf("failed to close conn")
+		progress := func(chunkIndex int, total int, err error) {
+			if err != nil {
+				fmt.Printf("  ✗ Chunk %d/%d failed: %v\n", chunkIndex+1, total, err)
+			} else {
+				fmt.Printf("  ✓ Chunk %d/%d uploaded\n", chunkIndex+1, total)
 			}
-		}()
-		storageClient := pb_storage.NewStorageServiceClient(conn)
-
-		// 4. ParallelUploader: Use concurrency limit from Config
-		up := uploader.NewParallelUploader(cfg.MaxParallelUploads, storageClient)
-
-		fmt.Printf("Starting parallel upload (Max: %d concurrent chunks)...\n", cfg.MaxParallelUploads)
-		if err := up.Upload(context.Background(), filePath, descriptors); err != nil {
-			log.Fatalf("Upload failed: %v", err)
 		}
 
-		for _, d := range descriptors {
-			m.ChunkStatus[d.ChunkID] = true
+		fmt.Printf("Uploading %s as %q ...\n", filePath, fileName)
+		start := time.Now()
+
+		result, err := svc.Upload(context.Background(), filePath, fileName, progress)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			fmt.Printf("\n✗ Upload failed: %v\n", err)
+			if result != nil {
+				fmt.Printf("  Chunks: %d/%d done, %d failed\n",
+					result.ChunksDone, result.ChunksTotal, result.ChunksFailed)
+			}
+			os.Exit(1)
 		}
 
-		if err := manifest.Save(cfg.ManifestDir, m); err != nil {
-			log.Fatalf("Failed to save final manifest: %v", err)
-		}
-
-		fmt.Println("Upload successful!")
+		fmt.Printf("\n✓ Upload complete in %s\n", elapsed.Round(time.Millisecond))
+		fmt.Printf("  File ID:  %s\n", result.FileID)
+		fmt.Printf("  Size:     %s\n", formatBytes(result.TotalSize))
+		fmt.Printf("  Chunks:   %d\n", result.ChunksTotal)
 	},
 }
+
+// --- Download Command ---
 
 var downloadCmd = &cobra.Command{
-	Use:   "download [filename] [output path]",
+	Use:   "download",
 	Short: "Download a file from the distributed FS",
-	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		fileName := args[0]
-		outputPath := args[1]
+		fileName, _ := cmd.Flags().GetString("name")
+		outputPath, _ := cmd.Flags().GetString("out")
 
-		// 1. Metadata: GetFile (Placeholder for Section 4)
-		// You'll need to fetch the ordered chunk list and node addresses.
-		// For now, this is where you'd call: metadataClient.GetFile(fileName)
-		fmt.Printf("Fetching metadata for %s...\n", fileName)
+		if fileName == "" {
+			log.Fatal("--name is required")
+		}
+		if outputPath == "" {
+			outputPath = fileName
+		}
 
-		// 2. ParallelDownloader: Orchestrate the retrieval
-		// This is where you use the downloader component we wrote.
-		// d := downloader.NewParallelDownloader(cfg.MaxParallelDownloads)
+		meta, storage, cleanup := connect()
+		defer cleanup()
 
-		fmt.Printf("Downloading to %s using %d parallel workers...\n", outputPath, cfg.MaxParallelDownloads)
+		svc := service.NewDownloadService(cfg, meta, storage)
 
-		// Example call logic:
-		// err := d.Download(context.Background(), outputPath, totalSize, placementMap)
-		// if err != nil {
-		//     log.Fatalf("Download failed: %v", err)
-		// }
+		progress := func(chunkIndex int, total int, err error) {
+			if err != nil {
+				fmt.Printf("  ✗ Chunk %d/%d failed: %v\n", chunkIndex+1, total, err)
+			} else {
+				fmt.Printf("  ✓ Chunk %d/%d downloaded\n", chunkIndex+1, total)
+			}
+		}
 
-		fmt.Println("Download complete and verified!")
+		fmt.Printf("Downloading %q to %s ...\n", fileName, outputPath)
+		start := time.Now()
+
+		result, err := svc.Download(context.Background(), fileName, outputPath, progress)
+		elapsed := time.Since(start)
+
+		if err != nil {
+			fmt.Printf("\n✗ Download failed: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("\n✓ Download complete in %s\n", elapsed.Round(time.Millisecond))
+		fmt.Printf("  File:   %s\n", result.OutputPath)
+		fmt.Printf("  Size:   %s\n", formatBytes(result.TotalSize))
 	},
 }
+
+// --- List Command ---
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all files in the distributed FS",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Flow: MetadataClient.ListFiles → print table
-		fmt.Println("Fetching file list from metadata...")
+		prefix, _ := cmd.Flags().GetString("prefix")
+
+		meta, _, cleanup := connect()
+		defer cleanup()
+
+		svc := service.NewListService(meta)
+
+		files, err := svc.ListFiles(context.Background(), prefix)
+		if err != nil {
+			log.Fatalf("List failed: %v", err)
+		}
+
+		if len(files) == 0 {
+			fmt.Println("No files found.")
+			return
+		}
+
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "FILE ID\tNAME\tSIZE\tSTATUS\tCHUNKS")
+		fmt.Fprintln(w, "-------\t----\t----\t------\t------")
+		for _, f := range files {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
+				f.FileID,
+				f.FileName,
+				formatBytes(f.FileSize),
+				f.Status,
+				len(f.ChunkIDs),
+			)
+		}
+		w.Flush()
 	},
 }
 
+// --- Delete Command ---
+
+var deleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete a file from the distributed FS",
+	Run: func(cmd *cobra.Command, args []string) {
+		fileID, _ := cmd.Flags().GetString("id")
+
+		if fileID == "" {
+			log.Fatal("--id is required")
+		}
+
+		meta, _, cleanup := connect()
+		defer cleanup()
+
+		svc := service.NewListService(meta)
+
+		if err := svc.DeleteFile(context.Background(), fileID); err != nil {
+			log.Fatalf("Delete failed: %v", err)
+		}
+
+		fmt.Printf("✓ File %s deleted\n", fileID)
+	},
+}
+
+// --- Helper Functions ---
+
+// connect creates metadata and storage client instances.
+// Returns a cleanup function to close connections.
+func connect() (metadataclient.Client, storageclient.Client, func()) {
+	metaAddr := cfg.MetadataAddrs[0]
+	meta, err := metadataclient.NewGRPCClient(metaAddr)
+	if err != nil {
+		log.Fatalf("Failed to connect to metadata service at %s: %v", metaAddr, err)
+	}
+
+	storage := storageclient.NewGRPCClient(cfg.FrameSize)
+
+	cleanup := func() {
+		if err := meta.Close(); err != nil {
+			log.Printf("Warning: failed to close metadata connection: %v", err)
+		}
+		if err := storage.Close(); err != nil {
+			log.Printf("Warning: failed to close storage connections: %v", err)
+		}
+	}
+
+	return meta, storage, cleanup
+}
+
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+// --- Main ---
+
 func main() {
-	fmt.Println("start")
-	var rootCmd = &cobra.Command{Use: "client"}
+	rootCmd := &cobra.Command{
+		Use:   "dfs",
+		Short: "DFS client — distributed file system CLI",
+	}
+
+	// Upload flags
+	uploadCmd.Flags().StringP("file", "f", "", "Path to the file to upload")
+	uploadCmd.Flags().StringP("name", "n", "", "Name to store the file as (defaults to file path)")
+
+	// Download flags
+	downloadCmd.Flags().StringP("name", "n", "", "Name of the file to download")
+	downloadCmd.Flags().StringP("out", "o", "", "Output file path (defaults to file name)")
+
+	// List flags
+	listCmd.Flags().StringP("prefix", "p", "", "Filter files by name prefix")
+
+	// Delete flags
+	deleteCmd.Flags().String("id", "", "File ID to delete")
+
 	rootCmd.AddCommand(uploadCmd)
 	rootCmd.AddCommand(downloadCmd)
 	rootCmd.AddCommand(listCmd)
-	err := rootCmd.Execute()
-	if err != nil {
-		log.Fatal("cli error while executing: ", err)
+	rootCmd.AddCommand(deleteCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
 }
