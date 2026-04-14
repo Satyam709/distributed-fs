@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -44,16 +45,21 @@ func (rs *RepairScheduler) spawnWorkers(ctx context.Context, count int) {
 	wg := sync.WaitGroup{}
 	wg.Add(count)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		go func(ctx context.Context) {
+			defer wg.Done()
 			for {
 				select {
 				case jobID := <-rs.jobs:
 					rs.executeJob(jobID)
+				case <-ctx.Done():
+					return
 				}
 			}
 		}(ctx)
 	}
+
+	wg.Wait()
 }
 
 // TriggerRepair is called by NodeWatcher when a node is marked dead. Scans all chunks that had a replica on the dead node via fsm.GetChunksByNode(deadNodeID). For each chunk, computes current live replica count. If below replication factor, calculates deficit and calls scheduleRepairJobs for each missing replica.
@@ -222,8 +228,44 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 	}
 }
 
+func (rs *RepairScheduler) GetPendingJobsForNode(nodeID string) []string {
+	rs.mutex.Lock()
+	defer rs.mutex.Unlock()
+
+	jobs, ok := rs.pendingJobs[nodeID]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), jobs...)
+}
+
 // OnJobComplete is called by gRPC handler when a storage node reports repair outcome. Proposes CmdUpdateRepairJob with Done or Failed status. If failed and chunk still under-replicated, re-schedules.
-func (rs *RepairScheduler) OnJobComplete(jobID string, success bool, errorMsg string) {
+func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, errorMsg string) error {
+	if success {
+		rs.mutex.Lock()
+		jobsForNode, ok := rs.pendingJobs[nodeid]
+		if !ok {
+			rs.mutex.Unlock()
+			return errors.New("invalid node")
+		}
+
+		foundAt := -1
+		for idx, val := range jobsForNode {
+			if val == jobID {
+				foundAt = idx
+				break
+			}
+		}
+		if foundAt < 0 {
+			rs.mutex.Unlock()
+			return errors.New("invalid jobID")
+		}
+		removed := jobsForNode[:foundAt]
+		removed = append(removed, jobsForNode[foundAt+1:]...)
+		rs.pendingJobs[nodeid] = removed
+		rs.mutex.Unlock()
+	}
+	return nil
 }
 
 type PlacementStrategy interface {

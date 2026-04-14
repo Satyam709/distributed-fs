@@ -1145,28 +1145,30 @@ func (x *RepairInstruction) GetTargetAddr() string {
 	return ""
 }
 
-type ReportRepairFailureRequest struct {
+type ReportRepairResultRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	JobSucceed    bool                   `protobuf:"varint,3,opt,name=job_succeed,json=jobSucceed,proto3" json:"job_succeed,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // error in case job_succeed = false
+	NodeId        string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ReportRepairFailureRequest) Reset() {
-	*x = ReportRepairFailureRequest{}
+func (x *ReportRepairResultRequest) Reset() {
+	*x = ReportRepairResultRequest{}
 	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ReportRepairFailureRequest) String() string {
+func (x *ReportRepairResultRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ReportRepairFailureRequest) ProtoMessage() {}
+func (*ReportRepairResultRequest) ProtoMessage() {}
 
-func (x *ReportRepairFailureRequest) ProtoReflect() protoreflect.Message {
+func (x *ReportRepairResultRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1178,46 +1180,60 @@ func (x *ReportRepairFailureRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ReportRepairFailureRequest.ProtoReflect.Descriptor instead.
-func (*ReportRepairFailureRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ReportRepairResultRequest.ProtoReflect.Descriptor instead.
+func (*ReportRepairResultRequest) Descriptor() ([]byte, []int) {
 	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{22}
 }
 
-func (x *ReportRepairFailureRequest) GetJobId() string {
+func (x *ReportRepairResultRequest) GetJobId() string {
 	if x != nil {
 		return x.JobId
 	}
 	return ""
 }
 
-func (x *ReportRepairFailureRequest) GetError() string {
+func (x *ReportRepairResultRequest) GetJobSucceed() bool {
+	if x != nil {
+		return x.JobSucceed
+	}
+	return false
+}
+
+func (x *ReportRepairResultRequest) GetError() string {
 	if x != nil {
 		return x.Error
 	}
 	return ""
 }
 
-type ReportRepairFailureResponse struct {
+func (x *ReportRepairResultRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+type ReportRepairResultResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ReportRepairFailureResponse) Reset() {
-	*x = ReportRepairFailureResponse{}
+func (x *ReportRepairResultResponse) Reset() {
+	*x = ReportRepairResultResponse{}
 	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ReportRepairFailureResponse) String() string {
+func (x *ReportRepairResultResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ReportRepairFailureResponse) ProtoMessage() {}
+func (*ReportRepairResultResponse) ProtoMessage() {}
 
-func (x *ReportRepairFailureResponse) ProtoReflect() protoreflect.Message {
+func (x *ReportRepairResultResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1229,12 +1245,12 @@ func (x *ReportRepairFailureResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ReportRepairFailureResponse.ProtoReflect.Descriptor instead.
-func (*ReportRepairFailureResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ReportRepairResultResponse.ProtoReflect.Descriptor instead.
+func (*ReportRepairResultResponse) Descriptor() ([]byte, []int) {
 	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{23}
 }
 
-func (x *ReportRepairFailureResponse) GetSuccess() bool {
+func (x *ReportRepairResultResponse) GetSuccess() bool {
 	if x != nil {
 		return x.Success
 	}
@@ -1569,11 +1585,14 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12$\n" +
 	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\x12\x1f\n" +
 	"\vtarget_addr\x18\x04 \x01(\tR\n" +
-	"targetAddr\"I\n" +
-	"\x1aReportRepairFailureRequest\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"7\n" +
-	"\x1bReportRepairFailureResponse\x12\x18\n" +
+	"targetAddr\"\x82\x01\n" +
+	"\x19ReportRepairResultRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1f\n" +
+	"\vjob_succeed\x18\x03 \x01(\bR\n" +
+	"jobSucceed\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x17\n" +
+	"\anode_id\x18\x04 \x01(\tR\x06nodeId\"6\n" +
+	"\x1aReportRepairResultResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xef\x01\n" +
 	"\bFileInfo\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1b\n" +
@@ -1600,7 +1619,7 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1d\n" +
 	"\n" +
-	"free_space\x18\x03 \x01(\x03R\tfreeSpace2\xc2\b\n" +
+	"free_space\x18\x03 \x01(\x03R\tfreeSpace2\xbf\b\n" +
 	"\x0fMetadataService\x12Y\n" +
 	"\n" +
 	"CreateFile\x12$.proto.metadata.v1.CreateFileRequest\x1a%.proto.metadata.v1.CreateFileResponse\x12P\n" +
@@ -1613,8 +1632,8 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\x10ReportCorruption\x12*.proto.metadata.v1.ReportCorruptionRequest\x1a+.proto.metadata.v1.ReportCorruptionResponse\x12_\n" +
 	"\fRegisterNode\x12&.proto.metadata.v1.RegisterNodeRequest\x1a'.proto.metadata.v1.RegisterNodeResponse\x12e\n" +
 	"\x0eDeregisterNode\x12(.proto.metadata.v1.DeregisterNodeRequest\x1a).proto.metadata.v1.DeregisterNodeResponse\x12V\n" +
-	"\tHeartbeat\x12#.proto.metadata.v1.HeartbeatRequest\x1a$.proto.metadata.v1.HeartbeatResponse\x12t\n" +
-	"\x13ReportRepairFailure\x12-.proto.metadata.v1.ReportRepairFailureRequest\x1a..proto.metadata.v1.ReportRepairFailureResponseB\"Z github.com/satyam709/gen/pb_metab\x06proto3"
+	"\tHeartbeat\x12#.proto.metadata.v1.HeartbeatRequest\x1a$.proto.metadata.v1.HeartbeatResponse\x12q\n" +
+	"\x12ReportRepairResult\x12,.proto.metadata.v1.ReportRepairResultRequest\x1a-.proto.metadata.v1.ReportRepairResultResponseB\"Z github.com/satyam709/gen/pb_metab\x06proto3"
 
 var (
 	file_proto_metadata_v1_metadata_proto_rawDescOnce sync.Once
@@ -1630,33 +1649,33 @@ func file_proto_metadata_v1_metadata_proto_rawDescGZIP() []byte {
 
 var file_proto_metadata_v1_metadata_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_proto_metadata_v1_metadata_proto_goTypes = []any{
-	(*CreateFileRequest)(nil),           // 0: proto.metadata.v1.CreateFileRequest
-	(*CreateFileResponse)(nil),          // 1: proto.metadata.v1.CreateFileResponse
-	(*ChunkPlacement)(nil),              // 2: proto.metadata.v1.ChunkPlacement
-	(*GetFileRequest)(nil),              // 3: proto.metadata.v1.GetFileRequest
-	(*GetFileResponse)(nil),             // 4: proto.metadata.v1.GetFileResponse
-	(*DeleteFileRequest)(nil),           // 5: proto.metadata.v1.DeleteFileRequest
-	(*DeleteFileResponse)(nil),          // 6: proto.metadata.v1.DeleteFileResponse
-	(*ListFilesRequest)(nil),            // 7: proto.metadata.v1.ListFilesRequest
-	(*ListFilesResponse)(nil),           // 8: proto.metadata.v1.ListFilesResponse
-	(*CommitChunkRequest)(nil),          // 9: proto.metadata.v1.CommitChunkRequest
-	(*CommitChunkResponse)(nil),         // 10: proto.metadata.v1.CommitChunkResponse
-	(*GetChunkLocationsRequest)(nil),    // 11: proto.metadata.v1.GetChunkLocationsRequest
-	(*GetChunkLocationsResponse)(nil),   // 12: proto.metadata.v1.GetChunkLocationsResponse
-	(*ReportCorruptionRequest)(nil),     // 13: proto.metadata.v1.ReportCorruptionRequest
-	(*ReportCorruptionResponse)(nil),    // 14: proto.metadata.v1.ReportCorruptionResponse
-	(*RegisterNodeRequest)(nil),         // 15: proto.metadata.v1.RegisterNodeRequest
-	(*RegisterNodeResponse)(nil),        // 16: proto.metadata.v1.RegisterNodeResponse
-	(*DeregisterNodeRequest)(nil),       // 17: proto.metadata.v1.DeregisterNodeRequest
-	(*DeregisterNodeResponse)(nil),      // 18: proto.metadata.v1.DeregisterNodeResponse
-	(*HeartbeatRequest)(nil),            // 19: proto.metadata.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),           // 20: proto.metadata.v1.HeartbeatResponse
-	(*RepairInstruction)(nil),           // 21: proto.metadata.v1.RepairInstruction
-	(*ReportRepairFailureRequest)(nil),  // 22: proto.metadata.v1.ReportRepairFailureRequest
-	(*ReportRepairFailureResponse)(nil), // 23: proto.metadata.v1.ReportRepairFailureResponse
-	(*FileInfo)(nil),                    // 24: proto.metadata.v1.FileInfo
-	(*ChunkInfo)(nil),                   // 25: proto.metadata.v1.ChunkInfo
-	(*NodeInfo)(nil),                    // 26: proto.metadata.v1.NodeInfo
+	(*CreateFileRequest)(nil),          // 0: proto.metadata.v1.CreateFileRequest
+	(*CreateFileResponse)(nil),         // 1: proto.metadata.v1.CreateFileResponse
+	(*ChunkPlacement)(nil),             // 2: proto.metadata.v1.ChunkPlacement
+	(*GetFileRequest)(nil),             // 3: proto.metadata.v1.GetFileRequest
+	(*GetFileResponse)(nil),            // 4: proto.metadata.v1.GetFileResponse
+	(*DeleteFileRequest)(nil),          // 5: proto.metadata.v1.DeleteFileRequest
+	(*DeleteFileResponse)(nil),         // 6: proto.metadata.v1.DeleteFileResponse
+	(*ListFilesRequest)(nil),           // 7: proto.metadata.v1.ListFilesRequest
+	(*ListFilesResponse)(nil),          // 8: proto.metadata.v1.ListFilesResponse
+	(*CommitChunkRequest)(nil),         // 9: proto.metadata.v1.CommitChunkRequest
+	(*CommitChunkResponse)(nil),        // 10: proto.metadata.v1.CommitChunkResponse
+	(*GetChunkLocationsRequest)(nil),   // 11: proto.metadata.v1.GetChunkLocationsRequest
+	(*GetChunkLocationsResponse)(nil),  // 12: proto.metadata.v1.GetChunkLocationsResponse
+	(*ReportCorruptionRequest)(nil),    // 13: proto.metadata.v1.ReportCorruptionRequest
+	(*ReportCorruptionResponse)(nil),   // 14: proto.metadata.v1.ReportCorruptionResponse
+	(*RegisterNodeRequest)(nil),        // 15: proto.metadata.v1.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil),       // 16: proto.metadata.v1.RegisterNodeResponse
+	(*DeregisterNodeRequest)(nil),      // 17: proto.metadata.v1.DeregisterNodeRequest
+	(*DeregisterNodeResponse)(nil),     // 18: proto.metadata.v1.DeregisterNodeResponse
+	(*HeartbeatRequest)(nil),           // 19: proto.metadata.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),          // 20: proto.metadata.v1.HeartbeatResponse
+	(*RepairInstruction)(nil),          // 21: proto.metadata.v1.RepairInstruction
+	(*ReportRepairResultRequest)(nil),  // 22: proto.metadata.v1.ReportRepairResultRequest
+	(*ReportRepairResultResponse)(nil), // 23: proto.metadata.v1.ReportRepairResultResponse
+	(*FileInfo)(nil),                   // 24: proto.metadata.v1.FileInfo
+	(*ChunkInfo)(nil),                  // 25: proto.metadata.v1.ChunkInfo
+	(*NodeInfo)(nil),                   // 26: proto.metadata.v1.NodeInfo
 }
 var file_proto_metadata_v1_metadata_proto_depIdxs = []int32{
 	2,  // 0: proto.metadata.v1.CreateFileResponse.placements:type_name -> proto.metadata.v1.ChunkPlacement
@@ -1677,7 +1696,7 @@ var file_proto_metadata_v1_metadata_proto_depIdxs = []int32{
 	15, // 15: proto.metadata.v1.MetadataService.RegisterNode:input_type -> proto.metadata.v1.RegisterNodeRequest
 	17, // 16: proto.metadata.v1.MetadataService.DeregisterNode:input_type -> proto.metadata.v1.DeregisterNodeRequest
 	19, // 17: proto.metadata.v1.MetadataService.Heartbeat:input_type -> proto.metadata.v1.HeartbeatRequest
-	22, // 18: proto.metadata.v1.MetadataService.ReportRepairFailure:input_type -> proto.metadata.v1.ReportRepairFailureRequest
+	22, // 18: proto.metadata.v1.MetadataService.ReportRepairResult:input_type -> proto.metadata.v1.ReportRepairResultRequest
 	1,  // 19: proto.metadata.v1.MetadataService.CreateFile:output_type -> proto.metadata.v1.CreateFileResponse
 	4,  // 20: proto.metadata.v1.MetadataService.GetFile:output_type -> proto.metadata.v1.GetFileResponse
 	6,  // 21: proto.metadata.v1.MetadataService.DeleteFile:output_type -> proto.metadata.v1.DeleteFileResponse
@@ -1688,7 +1707,7 @@ var file_proto_metadata_v1_metadata_proto_depIdxs = []int32{
 	16, // 26: proto.metadata.v1.MetadataService.RegisterNode:output_type -> proto.metadata.v1.RegisterNodeResponse
 	18, // 27: proto.metadata.v1.MetadataService.DeregisterNode:output_type -> proto.metadata.v1.DeregisterNodeResponse
 	20, // 28: proto.metadata.v1.MetadataService.Heartbeat:output_type -> proto.metadata.v1.HeartbeatResponse
-	23, // 29: proto.metadata.v1.MetadataService.ReportRepairFailure:output_type -> proto.metadata.v1.ReportRepairFailureResponse
+	23, // 29: proto.metadata.v1.MetadataService.ReportRepairResult:output_type -> proto.metadata.v1.ReportRepairResultResponse
 	19, // [19:30] is the sub-list for method output_type
 	8,  // [8:19] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name

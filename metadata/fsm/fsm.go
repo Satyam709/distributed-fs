@@ -944,3 +944,21 @@ func (mfsm *MetadataFSM) UpdateRepairJobStatus(raft *raft.Raft, jobid string, st
 	cmd := MetadataCommand{Type: CmdUpdateRepairJob, Payload: payload}
 	return Propose(raft, cmd)
 }
+
+func ProposeUpdateNodeSpace(raft *raft.Raft, nodeID string, space uint64, cc uint64) error {
+	us := CommandUpdateNodeSpace{
+		NodeID:     nodeID,
+		FreeSpace:  space,
+		ChunkCount: cc,
+		UpdatedAt:  time.Now(),
+	}
+	payload, err := json.Marshal(us)
+	if err != nil {
+		return err
+	}
+	cmd := MetadataCommand{
+		Type:    CmdUpdateNodeSpace,
+		Payload: payload,
+	}
+	return Propose(raft, cmd)
+}
