@@ -19,7 +19,7 @@ service MetadataService {
   rpc DeregisterNode(DeregisterNodeRequest) returns (DeregisterNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 
-  rpc ReportRepairFailure(ReportRepairFailureRequest) returns (ReportRepairFailureResponse);
+  rpc ReportRepairResult(ReportRepairResultRequest) returns (ReportRepairResultResponse);
 }
 
 message CreateFileRequest {
@@ -147,12 +147,14 @@ message RepairInstruction {
   string target_addr = 4;
 }
 
-message ReportRepairFailureRequest {
+message ReportRepairResultRequest {
   string job_id = 1;
-  string error = 2;
+  bool job_succeed = 3;
+  string error = 2; // error in case job_succeed = false
+  string node_id = 4;
 }
 
-message ReportRepairFailureResponse {
+message ReportRepairResultResponse {
   bool success = 1;
 }
 

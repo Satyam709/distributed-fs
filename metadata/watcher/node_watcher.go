@@ -94,6 +94,10 @@ func (nw *NodeWatcher) Stop() {
 	}
 }
 
+func (nw *NodeWatcher) UpdateLastSeen(nodeID string, seenAt time.Time) error {
+	return nw.fsm.UpdateLastSeen(nodeID, seenAt)
+}
+
 // sweep iterates all nodes and marks stale alive nodes as dead.
 // Only performs work when this node is the Raft leader.
 func (nw *NodeWatcher) sweep() {
