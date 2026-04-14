@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/satyam709/distributed-fs/internal/raftutil"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"github.com/satyam709/distributed-fs/metadata/store"
 	"github.com/stretchr/testify/assert"
@@ -130,26 +131,26 @@ func setupRaftWithoutBootstrap(t *testing.T) *raft.Raft {
 func TestIsLeader(t *testing.T) {
 	r := setupSingleNodeRaft(t)
 
-	err := WaitForLeader(r, 5*time.Second)
+	err := raftutil.WaitForLeader(r, 5*time.Second)
 	require.NoError(t, err)
 
-	assert.True(t, IsLeader(r))
+	assert.True(t, raftutil.IsLeader(r))
 }
 
 func TestLeaderAddress(t *testing.T) {
 	r := setupSingleNodeRaft(t)
 
-	err := WaitForLeader(r, 5*time.Second)
+	err := raftutil.WaitForLeader(r, 5*time.Second)
 	require.NoError(t, err)
 
-	addr := LeaderAddress(r)
+	addr := raftutil.LeaderAddress(r)
 	assert.NotEmpty(t, addr)
 }
 
 func TestWaitForLeader_Success(t *testing.T) {
 	r := setupSingleNodeRaft(t)
 
-	err := WaitForLeader(r, 5*time.Second)
+	err := raftutil.WaitForLeader(r, 5*time.Second)
 
 	assert.NoError(t, err)
 }
@@ -157,7 +158,7 @@ func TestWaitForLeader_Success(t *testing.T) {
 func TestWaitForLeader_Timeout(t *testing.T) {
 	r := setupRaftWithoutBootstrap(t)
 
-	err := WaitForLeader(r, 1*time.Second)
+	err := raftutil.WaitForLeader(r, 1*time.Second)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "timed out")
@@ -233,7 +234,7 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = WaitForLeader(node1, 5*time.Second)
+	err = raftutil.WaitForLeader(node1, 5*time.Second)
 	require.NoError(t, err)
 
 	// block until fully shut down — releases TCP port
@@ -284,10 +285,10 @@ func TestBootstrap_SkippedOnRestart(t *testing.T) {
 func TestLeaderAddress_Format(t *testing.T) {
 	r := setupSingleNodeRaft(t)
 
-	err := WaitForLeader(r, 5*time.Second)
+	err := raftutil.WaitForLeader(r, 5*time.Second)
 	require.NoError(t, err)
 
-	addr := LeaderAddress(r)
+	addr := raftutil.LeaderAddress(r)
 	assert.Contains(t, addr, ":")
 	assert.NotEqual(t, addr, ":")
 }

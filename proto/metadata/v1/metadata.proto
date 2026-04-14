@@ -9,6 +9,7 @@ service MetadataService {
   rpc GetFile(GetFileRequest) returns (GetFileResponse);
   rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
   rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc CommitFile(CommitFileRequest) returns (CommitFileResponse);
 
   rpc CommitChunk(CommitChunkRequest) returns (CommitChunkResponse);
   rpc GetChunkLocations(GetChunkLocationsRequest) returns (GetChunkLocationsResponse);
@@ -22,10 +23,11 @@ service MetadataService {
 }
 
 message CreateFileRequest {
-  string file_name = 1;
-  int64 file_size = 2;
-  int64 chunk_size = 3;
-  repeated string chunk_ids = 4; // ordered list of chunk IDs
+  string file_id = 1; // client provides this — uniqueness is client's responsibility
+  string file_name = 2;
+  int64 file_size = 3;
+  int64 chunk_size = 4;
+  repeated string chunk_ids = 5; // ordered list of chunk IDs
 }
 
 // returns placement map - where to write each chunk
@@ -60,8 +62,18 @@ message DeleteFileResponse {
   bool success = 1;
 }
 
+message CommitFileRequest {
+  string file_id = 1;
+  int64 file_size = 2; // final file size (in case of last chunk being smaller)
+  bytes checksum = 3; // checksum of the entire file for integrity verification
+}
+
+message CommitFileResponse {
+  bool success = 1;
+}
+
 message ListFilesRequest {
-  string prefix = 1; // optional filter by file name prefix
+  // string prefix = 1; // optional filter by file name prefix
 }
 
 message ListFilesResponse {
@@ -72,7 +84,7 @@ message CommitChunkRequest {
   string chunk_id = 1;
   string file_id = 2;
   repeated string confirmed_nodes = 3; // nodes that successfully stored the chunk
-  string checksum = 4; // checksum of the chunk for integrity verification
+  bytes checksum = 4; // checksum of the chunk for integrity verification
 }
 
 message CommitChunkResponse {
@@ -160,7 +172,7 @@ message ChunkInfo {
   string file_id = 2;
   int32 chunk_index = 3;
   int64 size = 4;
-  string checksum = 5;
+  bytes checksum = 5;
   repeated string replicas = 6; // node IDs that have this chunk
   string status = 7; // e.g., allocated, complete, lost
 }

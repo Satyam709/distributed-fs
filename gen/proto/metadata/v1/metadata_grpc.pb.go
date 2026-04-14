@@ -23,6 +23,7 @@ const (
 	MetadataService_GetFile_FullMethodName             = "/proto.metadata.v1.MetadataService/GetFile"
 	MetadataService_DeleteFile_FullMethodName          = "/proto.metadata.v1.MetadataService/DeleteFile"
 	MetadataService_ListFiles_FullMethodName           = "/proto.metadata.v1.MetadataService/ListFiles"
+	MetadataService_CommitFile_FullMethodName          = "/proto.metadata.v1.MetadataService/CommitFile"
 	MetadataService_CommitChunk_FullMethodName         = "/proto.metadata.v1.MetadataService/CommitChunk"
 	MetadataService_GetChunkLocations_FullMethodName   = "/proto.metadata.v1.MetadataService/GetChunkLocations"
 	MetadataService_ReportCorruption_FullMethodName    = "/proto.metadata.v1.MetadataService/ReportCorruption"
@@ -40,6 +41,7 @@ type MetadataServiceClient interface {
 	GetFile(ctx context.Context, in *GetFileRequest, opts ...grpc.CallOption) (*GetFileResponse, error)
 	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error)
 	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
+	CommitFile(ctx context.Context, in *CommitFileRequest, opts ...grpc.CallOption) (*CommitFileResponse, error)
 	CommitChunk(ctx context.Context, in *CommitChunkRequest, opts ...grpc.CallOption) (*CommitChunkResponse, error)
 	GetChunkLocations(ctx context.Context, in *GetChunkLocationsRequest, opts ...grpc.CallOption) (*GetChunkLocationsResponse, error)
 	ReportCorruption(ctx context.Context, in *ReportCorruptionRequest, opts ...grpc.CallOption) (*ReportCorruptionResponse, error)
@@ -91,6 +93,16 @@ func (c *metadataServiceClient) ListFiles(ctx context.Context, in *ListFilesRequ
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListFilesResponse)
 	err := c.cc.Invoke(ctx, MetadataService_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *metadataServiceClient) CommitFile(ctx context.Context, in *CommitFileRequest, opts ...grpc.CallOption) (*CommitFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommitFileResponse)
+	err := c.cc.Invoke(ctx, MetadataService_CommitFile_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +187,7 @@ type MetadataServiceServer interface {
 	GetFile(context.Context, *GetFileRequest) (*GetFileResponse, error)
 	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)
 	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
+	CommitFile(context.Context, *CommitFileRequest) (*CommitFileResponse, error)
 	CommitChunk(context.Context, *CommitChunkRequest) (*CommitChunkResponse, error)
 	GetChunkLocations(context.Context, *GetChunkLocationsRequest) (*GetChunkLocationsResponse, error)
 	ReportCorruption(context.Context, *ReportCorruptionRequest) (*ReportCorruptionResponse, error)
@@ -203,6 +216,9 @@ func (UnimplementedMetadataServiceServer) DeleteFile(context.Context, *DeleteFil
 }
 func (UnimplementedMetadataServiceServer) ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListFiles not implemented")
+}
+func (UnimplementedMetadataServiceServer) CommitFile(context.Context, *CommitFileRequest) (*CommitFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CommitFile not implemented")
 }
 func (UnimplementedMetadataServiceServer) CommitChunk(context.Context, *CommitChunkRequest) (*CommitChunkResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CommitChunk not implemented")
@@ -314,6 +330,24 @@ func _MetadataService_ListFiles_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MetadataServiceServer).ListFiles(ctx, req.(*ListFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MetadataService_CommitFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CommitFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MetadataServiceServer).CommitFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MetadataService_CommitFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MetadataServiceServer).CommitFile(ctx, req.(*CommitFileRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -466,6 +500,10 @@ var MetadataService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListFiles",
 			Handler:    _MetadataService_ListFiles_Handler,
+		},
+		{
+			MethodName: "CommitFile",
+			Handler:    _MetadataService_CommitFile_Handler,
 		},
 		{
 			MethodName: "CommitChunk",

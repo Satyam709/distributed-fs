@@ -23,10 +23,11 @@ const (
 
 type CreateFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FileName      string                 `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
-	FileSize      int64                  `protobuf:"varint,2,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"`
-	ChunkSize     int64                  `protobuf:"varint,3,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
-	ChunkIds      []string               `protobuf:"bytes,4,rep,name=chunk_ids,json=chunkIds,proto3" json:"chunk_ids,omitempty"` // ordered list of chunk IDs
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"` // client provides this — uniqueness is client's responsibility
+	FileName      string                 `protobuf:"bytes,2,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	FileSize      int64                  `protobuf:"varint,3,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"`
+	ChunkSize     int64                  `protobuf:"varint,4,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
+	ChunkIds      []string               `protobuf:"bytes,5,rep,name=chunk_ids,json=chunkIds,proto3" json:"chunk_ids,omitempty"` // ordered list of chunk IDs
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -59,6 +60,13 @@ func (x *CreateFileRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use CreateFileRequest.ProtoReflect.Descriptor instead.
 func (*CreateFileRequest) Descriptor() ([]byte, []int) {
 	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CreateFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
 }
 
 func (x *CreateFileRequest) GetFileName() string {
@@ -386,16 +394,119 @@ func (x *DeleteFileResponse) GetSuccess() bool {
 	return false
 }
 
+type CommitFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	FileSize      int64                  `protobuf:"varint,2,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"` // final file size (in case of last chunk being smaller)
+	Checksum      []byte                 `protobuf:"bytes,3,opt,name=checksum,proto3" json:"checksum,omitempty"`                  // checksum of the entire file for integrity verification
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommitFileRequest) Reset() {
+	*x = CommitFileRequest{}
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommitFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommitFileRequest) ProtoMessage() {}
+
+func (x *CommitFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommitFileRequest.ProtoReflect.Descriptor instead.
+func (*CommitFileRequest) Descriptor() ([]byte, []int) {
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CommitFileRequest) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *CommitFileRequest) GetFileSize() int64 {
+	if x != nil {
+		return x.FileSize
+	}
+	return 0
+}
+
+func (x *CommitFileRequest) GetChecksum() []byte {
+	if x != nil {
+		return x.Checksum
+	}
+	return nil
+}
+
+type CommitFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommitFileResponse) Reset() {
+	*x = CommitFileResponse{}
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommitFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommitFileResponse) ProtoMessage() {}
+
+func (x *CommitFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommitFileResponse.ProtoReflect.Descriptor instead.
+func (*CommitFileResponse) Descriptor() ([]byte, []int) {
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CommitFileResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 type ListFilesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"` // optional filter by file name prefix
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListFilesRequest) Reset() {
 	*x = ListFilesRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[7]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -407,7 +518,7 @@ func (x *ListFilesRequest) String() string {
 func (*ListFilesRequest) ProtoMessage() {}
 
 func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[7]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -420,14 +531,7 @@ func (x *ListFilesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesRequest.ProtoReflect.Descriptor instead.
 func (*ListFilesRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *ListFilesRequest) GetPrefix() string {
-	if x != nil {
-		return x.Prefix
-	}
-	return ""
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{9}
 }
 
 type ListFilesResponse struct {
@@ -439,7 +543,7 @@ type ListFilesResponse struct {
 
 func (x *ListFilesResponse) Reset() {
 	*x = ListFilesResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[8]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -451,7 +555,7 @@ func (x *ListFilesResponse) String() string {
 func (*ListFilesResponse) ProtoMessage() {}
 
 func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[8]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -464,7 +568,7 @@ func (x *ListFilesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFilesResponse.ProtoReflect.Descriptor instead.
 func (*ListFilesResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{8}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListFilesResponse) GetFiles() []*FileInfo {
@@ -479,14 +583,14 @@ type CommitChunkRequest struct {
 	ChunkId        string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
 	FileId         string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	ConfirmedNodes []string               `protobuf:"bytes,3,rep,name=confirmed_nodes,json=confirmedNodes,proto3" json:"confirmed_nodes,omitempty"` // nodes that successfully stored the chunk
-	Checksum       string                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`                                   // checksum of the chunk for integrity verification
+	Checksum       []byte                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`                                   // checksum of the chunk for integrity verification
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *CommitChunkRequest) Reset() {
 	*x = CommitChunkRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[9]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -498,7 +602,7 @@ func (x *CommitChunkRequest) String() string {
 func (*CommitChunkRequest) ProtoMessage() {}
 
 func (x *CommitChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[9]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -511,7 +615,7 @@ func (x *CommitChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitChunkRequest.ProtoReflect.Descriptor instead.
 func (*CommitChunkRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{9}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CommitChunkRequest) GetChunkId() string {
@@ -535,11 +639,11 @@ func (x *CommitChunkRequest) GetConfirmedNodes() []string {
 	return nil
 }
 
-func (x *CommitChunkRequest) GetChecksum() string {
+func (x *CommitChunkRequest) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 type CommitChunkResponse struct {
@@ -551,7 +655,7 @@ type CommitChunkResponse struct {
 
 func (x *CommitChunkResponse) Reset() {
 	*x = CommitChunkResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[10]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -563,7 +667,7 @@ func (x *CommitChunkResponse) String() string {
 func (*CommitChunkResponse) ProtoMessage() {}
 
 func (x *CommitChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[10]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -576,7 +680,7 @@ func (x *CommitChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitChunkResponse.ProtoReflect.Descriptor instead.
 func (*CommitChunkResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{10}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CommitChunkResponse) GetSuccess() bool {
@@ -595,7 +699,7 @@ type GetChunkLocationsRequest struct {
 
 func (x *GetChunkLocationsRequest) Reset() {
 	*x = GetChunkLocationsRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[11]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -607,7 +711,7 @@ func (x *GetChunkLocationsRequest) String() string {
 func (*GetChunkLocationsRequest) ProtoMessage() {}
 
 func (x *GetChunkLocationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[11]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -620,7 +724,7 @@ func (x *GetChunkLocationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetChunkLocationsRequest.ProtoReflect.Descriptor instead.
 func (*GetChunkLocationsRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{11}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetChunkLocationsRequest) GetChunkId() string {
@@ -639,7 +743,7 @@ type GetChunkLocationsResponse struct {
 
 func (x *GetChunkLocationsResponse) Reset() {
 	*x = GetChunkLocationsResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[12]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -651,7 +755,7 @@ func (x *GetChunkLocationsResponse) String() string {
 func (*GetChunkLocationsResponse) ProtoMessage() {}
 
 func (x *GetChunkLocationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[12]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -664,7 +768,7 @@ func (x *GetChunkLocationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetChunkLocationsResponse.ProtoReflect.Descriptor instead.
 func (*GetChunkLocationsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{12}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetChunkLocationsResponse) GetNodes() []*NodeInfo {
@@ -684,7 +788,7 @@ type ReportCorruptionRequest struct {
 
 func (x *ReportCorruptionRequest) Reset() {
 	*x = ReportCorruptionRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[13]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +800,7 @@ func (x *ReportCorruptionRequest) String() string {
 func (*ReportCorruptionRequest) ProtoMessage() {}
 
 func (x *ReportCorruptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[13]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +813,7 @@ func (x *ReportCorruptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportCorruptionRequest.ProtoReflect.Descriptor instead.
 func (*ReportCorruptionRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{13}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReportCorruptionRequest) GetChunkId() string {
@@ -735,7 +839,7 @@ type ReportCorruptionResponse struct {
 
 func (x *ReportCorruptionResponse) Reset() {
 	*x = ReportCorruptionResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[14]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -747,7 +851,7 @@ func (x *ReportCorruptionResponse) String() string {
 func (*ReportCorruptionResponse) ProtoMessage() {}
 
 func (x *ReportCorruptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[14]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -760,7 +864,7 @@ func (x *ReportCorruptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportCorruptionResponse.ProtoReflect.Descriptor instead.
 func (*ReportCorruptionResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{14}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ReportCorruptionResponse) GetSuccess() bool {
@@ -782,7 +886,7 @@ type RegisterNodeRequest struct {
 
 func (x *RegisterNodeRequest) Reset() {
 	*x = RegisterNodeRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[15]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -794,7 +898,7 @@ func (x *RegisterNodeRequest) String() string {
 func (*RegisterNodeRequest) ProtoMessage() {}
 
 func (x *RegisterNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[15]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -807,7 +911,7 @@ func (x *RegisterNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterNodeRequest.ProtoReflect.Descriptor instead.
 func (*RegisterNodeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{15}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RegisterNodeRequest) GetNodeId() string {
@@ -847,7 +951,7 @@ type RegisterNodeResponse struct {
 
 func (x *RegisterNodeResponse) Reset() {
 	*x = RegisterNodeResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[16]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -859,7 +963,7 @@ func (x *RegisterNodeResponse) String() string {
 func (*RegisterNodeResponse) ProtoMessage() {}
 
 func (x *RegisterNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[16]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -872,7 +976,7 @@ func (x *RegisterNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterNodeResponse.ProtoReflect.Descriptor instead.
 func (*RegisterNodeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{16}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RegisterNodeResponse) GetNodeId() string {
@@ -891,7 +995,7 @@ type DeregisterNodeRequest struct {
 
 func (x *DeregisterNodeRequest) Reset() {
 	*x = DeregisterNodeRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[17]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -903,7 +1007,7 @@ func (x *DeregisterNodeRequest) String() string {
 func (*DeregisterNodeRequest) ProtoMessage() {}
 
 func (x *DeregisterNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[17]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -916,7 +1020,7 @@ func (x *DeregisterNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterNodeRequest.ProtoReflect.Descriptor instead.
 func (*DeregisterNodeRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{17}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeregisterNodeRequest) GetNodeId() string {
@@ -935,7 +1039,7 @@ type DeregisterNodeResponse struct {
 
 func (x *DeregisterNodeResponse) Reset() {
 	*x = DeregisterNodeResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[18]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +1051,7 @@ func (x *DeregisterNodeResponse) String() string {
 func (*DeregisterNodeResponse) ProtoMessage() {}
 
 func (x *DeregisterNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[18]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +1064,7 @@ func (x *DeregisterNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterNodeResponse.ProtoReflect.Descriptor instead.
 func (*DeregisterNodeResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{18}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DeregisterNodeResponse) GetSuccess() bool {
@@ -981,7 +1085,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[19]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -993,7 +1097,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[19]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1006,7 +1110,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{19}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *HeartbeatRequest) GetNodeId() string {
@@ -1040,7 +1144,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[20]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1052,7 +1156,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[20]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1065,7 +1169,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{20}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *HeartbeatResponse) GetRepairJobs() []*RepairInstruction {
@@ -1089,7 +1193,7 @@ type RepairInstruction struct {
 
 func (x *RepairInstruction) Reset() {
 	*x = RepairInstruction{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[21]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1101,7 +1205,7 @@ func (x *RepairInstruction) String() string {
 func (*RepairInstruction) ProtoMessage() {}
 
 func (x *RepairInstruction) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[21]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1114,7 +1218,7 @@ func (x *RepairInstruction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairInstruction.ProtoReflect.Descriptor instead.
 func (*RepairInstruction) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{21}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RepairInstruction) GetJobId() string {
@@ -1155,7 +1259,7 @@ type ReportRepairFailureRequest struct {
 
 func (x *ReportRepairFailureRequest) Reset() {
 	*x = ReportRepairFailureRequest{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1167,7 +1271,7 @@ func (x *ReportRepairFailureRequest) String() string {
 func (*ReportRepairFailureRequest) ProtoMessage() {}
 
 func (x *ReportRepairFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[22]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1180,7 +1284,7 @@ func (x *ReportRepairFailureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportRepairFailureRequest.ProtoReflect.Descriptor instead.
 func (*ReportRepairFailureRequest) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{22}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReportRepairFailureRequest) GetJobId() string {
@@ -1206,7 +1310,7 @@ type ReportRepairFailureResponse struct {
 
 func (x *ReportRepairFailureResponse) Reset() {
 	*x = ReportRepairFailureResponse{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1218,7 +1322,7 @@ func (x *ReportRepairFailureResponse) String() string {
 func (*ReportRepairFailureResponse) ProtoMessage() {}
 
 func (x *ReportRepairFailureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[23]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1231,7 +1335,7 @@ func (x *ReportRepairFailureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportRepairFailureResponse.ProtoReflect.Descriptor instead.
 func (*ReportRepairFailureResponse) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{23}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ReportRepairFailureResponse) GetSuccess() bool {
@@ -1257,7 +1361,7 @@ type FileInfo struct {
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[24]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1269,7 +1373,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[24]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1282,7 +1386,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{24}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *FileInfo) GetFileId() string {
@@ -1347,7 +1451,7 @@ type ChunkInfo struct {
 	FileId        string                 `protobuf:"bytes,2,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	ChunkIndex    int32                  `protobuf:"varint,3,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
 	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
-	Checksum      string                 `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	Checksum      []byte                 `protobuf:"bytes,5,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	Replicas      []string               `protobuf:"bytes,6,rep,name=replicas,proto3" json:"replicas,omitempty"` // node IDs that have this chunk
 	Status        string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`     // e.g., allocated, complete, lost
 	unknownFields protoimpl.UnknownFields
@@ -1356,7 +1460,7 @@ type ChunkInfo struct {
 
 func (x *ChunkInfo) Reset() {
 	*x = ChunkInfo{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[25]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1368,7 +1472,7 @@ func (x *ChunkInfo) String() string {
 func (*ChunkInfo) ProtoMessage() {}
 
 func (x *ChunkInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[25]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1381,7 +1485,7 @@ func (x *ChunkInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChunkInfo.ProtoReflect.Descriptor instead.
 func (*ChunkInfo) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{25}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ChunkInfo) GetChunkId() string {
@@ -1412,11 +1516,11 @@ func (x *ChunkInfo) GetSize() int64 {
 	return 0
 }
 
-func (x *ChunkInfo) GetChecksum() string {
+func (x *ChunkInfo) GetChecksum() []byte {
 	if x != nil {
 		return x.Checksum
 	}
-	return ""
+	return nil
 }
 
 func (x *ChunkInfo) GetReplicas() []string {
@@ -1444,7 +1548,7 @@ type NodeInfo struct {
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[26]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1456,7 +1560,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[26]
+	mi := &file_proto_metadata_v1_metadata_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1469,7 +1573,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{26}
+	return file_proto_metadata_v1_metadata_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *NodeInfo) GetNodeId() string {
@@ -1497,13 +1601,14 @@ var File_proto_metadata_v1_metadata_proto protoreflect.FileDescriptor
 
 const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\n" +
-	" proto/metadata/v1/metadata.proto\x12\x11proto.metadata.v1\"\x89\x01\n" +
-	"\x11CreateFileRequest\x12\x1b\n" +
-	"\tfile_name\x18\x01 \x01(\tR\bfileName\x12\x1b\n" +
-	"\tfile_size\x18\x02 \x01(\x03R\bfileSize\x12\x1d\n" +
+	" proto/metadata/v1/metadata.proto\x12\x11proto.metadata.v1\"\xa2\x01\n" +
+	"\x11CreateFileRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1b\n" +
+	"\tfile_name\x18\x02 \x01(\tR\bfileName\x12\x1b\n" +
+	"\tfile_size\x18\x03 \x01(\x03R\bfileSize\x12\x1d\n" +
 	"\n" +
-	"chunk_size\x18\x03 \x01(\x03R\tchunkSize\x12\x1b\n" +
-	"\tchunk_ids\x18\x04 \x03(\tR\bchunkIds\"p\n" +
+	"chunk_size\x18\x04 \x01(\x03R\tchunkSize\x12\x1b\n" +
+	"\tchunk_ids\x18\x05 \x03(\tR\bchunkIds\"p\n" +
 	"\x12CreateFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12A\n" +
 	"\n" +
@@ -1521,16 +1626,21 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\x11DeleteFileRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\".\n" +
 	"\x12DeleteFileResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"*\n" +
-	"\x10ListFilesRequest\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"F\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"e\n" +
+	"\x11CommitFileRequest\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1b\n" +
+	"\tfile_size\x18\x02 \x01(\x03R\bfileSize\x12\x1a\n" +
+	"\bchecksum\x18\x03 \x01(\fR\bchecksum\".\n" +
+	"\x12CommitFileResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x12\n" +
+	"\x10ListFilesRequest\"F\n" +
 	"\x11ListFilesResponse\x121\n" +
 	"\x05files\x18\x01 \x03(\v2\x1b.proto.metadata.v1.FileInfoR\x05files\"\x8d\x01\n" +
 	"\x12CommitChunkRequest\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x17\n" +
 	"\afile_id\x18\x02 \x01(\tR\x06fileId\x12'\n" +
 	"\x0fconfirmed_nodes\x18\x03 \x03(\tR\x0econfirmedNodes\x12\x1a\n" +
-	"\bchecksum\x18\x04 \x01(\tR\bchecksum\"/\n" +
+	"\bchecksum\x18\x04 \x01(\fR\bchecksum\"/\n" +
 	"\x13CommitChunkResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"5\n" +
 	"\x18GetChunkLocationsRequest\x12\x19\n" +
@@ -1593,21 +1703,23 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"\vchunk_index\x18\x03 \x01(\x05R\n" +
 	"chunkIndex\x12\x12\n" +
 	"\x04size\x18\x04 \x01(\x03R\x04size\x12\x1a\n" +
-	"\bchecksum\x18\x05 \x01(\tR\bchecksum\x12\x1a\n" +
+	"\bchecksum\x18\x05 \x01(\fR\bchecksum\x12\x1a\n" +
 	"\breplicas\x18\x06 \x03(\tR\breplicas\x12\x16\n" +
 	"\x06status\x18\a \x01(\tR\x06status\"\\\n" +
 	"\bNodeInfo\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1d\n" +
 	"\n" +
-	"free_space\x18\x03 \x01(\x03R\tfreeSpace2\xc2\b\n" +
+	"free_space\x18\x03 \x01(\x03R\tfreeSpace2\x9d\t\n" +
 	"\x0fMetadataService\x12Y\n" +
 	"\n" +
 	"CreateFile\x12$.proto.metadata.v1.CreateFileRequest\x1a%.proto.metadata.v1.CreateFileResponse\x12P\n" +
 	"\aGetFile\x12!.proto.metadata.v1.GetFileRequest\x1a\".proto.metadata.v1.GetFileResponse\x12Y\n" +
 	"\n" +
 	"DeleteFile\x12$.proto.metadata.v1.DeleteFileRequest\x1a%.proto.metadata.v1.DeleteFileResponse\x12V\n" +
-	"\tListFiles\x12#.proto.metadata.v1.ListFilesRequest\x1a$.proto.metadata.v1.ListFilesResponse\x12\\\n" +
+	"\tListFiles\x12#.proto.metadata.v1.ListFilesRequest\x1a$.proto.metadata.v1.ListFilesResponse\x12Y\n" +
+	"\n" +
+	"CommitFile\x12$.proto.metadata.v1.CommitFileRequest\x1a%.proto.metadata.v1.CommitFileResponse\x12\\\n" +
 	"\vCommitChunk\x12%.proto.metadata.v1.CommitChunkRequest\x1a&.proto.metadata.v1.CommitChunkResponse\x12n\n" +
 	"\x11GetChunkLocations\x12+.proto.metadata.v1.GetChunkLocationsRequest\x1a,.proto.metadata.v1.GetChunkLocationsResponse\x12k\n" +
 	"\x10ReportCorruption\x12*.proto.metadata.v1.ReportCorruptionRequest\x1a+.proto.metadata.v1.ReportCorruptionResponse\x12_\n" +
@@ -1628,7 +1740,7 @@ func file_proto_metadata_v1_metadata_proto_rawDescGZIP() []byte {
 	return file_proto_metadata_v1_metadata_proto_rawDescData
 }
 
-var file_proto_metadata_v1_metadata_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_proto_metadata_v1_metadata_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_proto_metadata_v1_metadata_proto_goTypes = []any{
 	(*CreateFileRequest)(nil),           // 0: proto.metadata.v1.CreateFileRequest
 	(*CreateFileResponse)(nil),          // 1: proto.metadata.v1.CreateFileResponse
@@ -1637,60 +1749,64 @@ var file_proto_metadata_v1_metadata_proto_goTypes = []any{
 	(*GetFileResponse)(nil),             // 4: proto.metadata.v1.GetFileResponse
 	(*DeleteFileRequest)(nil),           // 5: proto.metadata.v1.DeleteFileRequest
 	(*DeleteFileResponse)(nil),          // 6: proto.metadata.v1.DeleteFileResponse
-	(*ListFilesRequest)(nil),            // 7: proto.metadata.v1.ListFilesRequest
-	(*ListFilesResponse)(nil),           // 8: proto.metadata.v1.ListFilesResponse
-	(*CommitChunkRequest)(nil),          // 9: proto.metadata.v1.CommitChunkRequest
-	(*CommitChunkResponse)(nil),         // 10: proto.metadata.v1.CommitChunkResponse
-	(*GetChunkLocationsRequest)(nil),    // 11: proto.metadata.v1.GetChunkLocationsRequest
-	(*GetChunkLocationsResponse)(nil),   // 12: proto.metadata.v1.GetChunkLocationsResponse
-	(*ReportCorruptionRequest)(nil),     // 13: proto.metadata.v1.ReportCorruptionRequest
-	(*ReportCorruptionResponse)(nil),    // 14: proto.metadata.v1.ReportCorruptionResponse
-	(*RegisterNodeRequest)(nil),         // 15: proto.metadata.v1.RegisterNodeRequest
-	(*RegisterNodeResponse)(nil),        // 16: proto.metadata.v1.RegisterNodeResponse
-	(*DeregisterNodeRequest)(nil),       // 17: proto.metadata.v1.DeregisterNodeRequest
-	(*DeregisterNodeResponse)(nil),      // 18: proto.metadata.v1.DeregisterNodeResponse
-	(*HeartbeatRequest)(nil),            // 19: proto.metadata.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),           // 20: proto.metadata.v1.HeartbeatResponse
-	(*RepairInstruction)(nil),           // 21: proto.metadata.v1.RepairInstruction
-	(*ReportRepairFailureRequest)(nil),  // 22: proto.metadata.v1.ReportRepairFailureRequest
-	(*ReportRepairFailureResponse)(nil), // 23: proto.metadata.v1.ReportRepairFailureResponse
-	(*FileInfo)(nil),                    // 24: proto.metadata.v1.FileInfo
-	(*ChunkInfo)(nil),                   // 25: proto.metadata.v1.ChunkInfo
-	(*NodeInfo)(nil),                    // 26: proto.metadata.v1.NodeInfo
+	(*CommitFileRequest)(nil),           // 7: proto.metadata.v1.CommitFileRequest
+	(*CommitFileResponse)(nil),          // 8: proto.metadata.v1.CommitFileResponse
+	(*ListFilesRequest)(nil),            // 9: proto.metadata.v1.ListFilesRequest
+	(*ListFilesResponse)(nil),           // 10: proto.metadata.v1.ListFilesResponse
+	(*CommitChunkRequest)(nil),          // 11: proto.metadata.v1.CommitChunkRequest
+	(*CommitChunkResponse)(nil),         // 12: proto.metadata.v1.CommitChunkResponse
+	(*GetChunkLocationsRequest)(nil),    // 13: proto.metadata.v1.GetChunkLocationsRequest
+	(*GetChunkLocationsResponse)(nil),   // 14: proto.metadata.v1.GetChunkLocationsResponse
+	(*ReportCorruptionRequest)(nil),     // 15: proto.metadata.v1.ReportCorruptionRequest
+	(*ReportCorruptionResponse)(nil),    // 16: proto.metadata.v1.ReportCorruptionResponse
+	(*RegisterNodeRequest)(nil),         // 17: proto.metadata.v1.RegisterNodeRequest
+	(*RegisterNodeResponse)(nil),        // 18: proto.metadata.v1.RegisterNodeResponse
+	(*DeregisterNodeRequest)(nil),       // 19: proto.metadata.v1.DeregisterNodeRequest
+	(*DeregisterNodeResponse)(nil),      // 20: proto.metadata.v1.DeregisterNodeResponse
+	(*HeartbeatRequest)(nil),            // 21: proto.metadata.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),           // 22: proto.metadata.v1.HeartbeatResponse
+	(*RepairInstruction)(nil),           // 23: proto.metadata.v1.RepairInstruction
+	(*ReportRepairFailureRequest)(nil),  // 24: proto.metadata.v1.ReportRepairFailureRequest
+	(*ReportRepairFailureResponse)(nil), // 25: proto.metadata.v1.ReportRepairFailureResponse
+	(*FileInfo)(nil),                    // 26: proto.metadata.v1.FileInfo
+	(*ChunkInfo)(nil),                   // 27: proto.metadata.v1.ChunkInfo
+	(*NodeInfo)(nil),                    // 28: proto.metadata.v1.NodeInfo
 }
 var file_proto_metadata_v1_metadata_proto_depIdxs = []int32{
 	2,  // 0: proto.metadata.v1.CreateFileResponse.placements:type_name -> proto.metadata.v1.ChunkPlacement
-	26, // 1: proto.metadata.v1.ChunkPlacement.primary:type_name -> proto.metadata.v1.NodeInfo
-	26, // 2: proto.metadata.v1.ChunkPlacement.replicas:type_name -> proto.metadata.v1.NodeInfo
-	24, // 3: proto.metadata.v1.GetFileResponse.file:type_name -> proto.metadata.v1.FileInfo
-	25, // 4: proto.metadata.v1.GetFileResponse.chunks:type_name -> proto.metadata.v1.ChunkInfo
-	24, // 5: proto.metadata.v1.ListFilesResponse.files:type_name -> proto.metadata.v1.FileInfo
-	26, // 6: proto.metadata.v1.GetChunkLocationsResponse.nodes:type_name -> proto.metadata.v1.NodeInfo
-	21, // 7: proto.metadata.v1.HeartbeatResponse.repair_jobs:type_name -> proto.metadata.v1.RepairInstruction
+	28, // 1: proto.metadata.v1.ChunkPlacement.primary:type_name -> proto.metadata.v1.NodeInfo
+	28, // 2: proto.metadata.v1.ChunkPlacement.replicas:type_name -> proto.metadata.v1.NodeInfo
+	26, // 3: proto.metadata.v1.GetFileResponse.file:type_name -> proto.metadata.v1.FileInfo
+	27, // 4: proto.metadata.v1.GetFileResponse.chunks:type_name -> proto.metadata.v1.ChunkInfo
+	26, // 5: proto.metadata.v1.ListFilesResponse.files:type_name -> proto.metadata.v1.FileInfo
+	28, // 6: proto.metadata.v1.GetChunkLocationsResponse.nodes:type_name -> proto.metadata.v1.NodeInfo
+	23, // 7: proto.metadata.v1.HeartbeatResponse.repair_jobs:type_name -> proto.metadata.v1.RepairInstruction
 	0,  // 8: proto.metadata.v1.MetadataService.CreateFile:input_type -> proto.metadata.v1.CreateFileRequest
 	3,  // 9: proto.metadata.v1.MetadataService.GetFile:input_type -> proto.metadata.v1.GetFileRequest
 	5,  // 10: proto.metadata.v1.MetadataService.DeleteFile:input_type -> proto.metadata.v1.DeleteFileRequest
-	7,  // 11: proto.metadata.v1.MetadataService.ListFiles:input_type -> proto.metadata.v1.ListFilesRequest
-	9,  // 12: proto.metadata.v1.MetadataService.CommitChunk:input_type -> proto.metadata.v1.CommitChunkRequest
-	11, // 13: proto.metadata.v1.MetadataService.GetChunkLocations:input_type -> proto.metadata.v1.GetChunkLocationsRequest
-	13, // 14: proto.metadata.v1.MetadataService.ReportCorruption:input_type -> proto.metadata.v1.ReportCorruptionRequest
-	15, // 15: proto.metadata.v1.MetadataService.RegisterNode:input_type -> proto.metadata.v1.RegisterNodeRequest
-	17, // 16: proto.metadata.v1.MetadataService.DeregisterNode:input_type -> proto.metadata.v1.DeregisterNodeRequest
-	19, // 17: proto.metadata.v1.MetadataService.Heartbeat:input_type -> proto.metadata.v1.HeartbeatRequest
-	22, // 18: proto.metadata.v1.MetadataService.ReportRepairFailure:input_type -> proto.metadata.v1.ReportRepairFailureRequest
-	1,  // 19: proto.metadata.v1.MetadataService.CreateFile:output_type -> proto.metadata.v1.CreateFileResponse
-	4,  // 20: proto.metadata.v1.MetadataService.GetFile:output_type -> proto.metadata.v1.GetFileResponse
-	6,  // 21: proto.metadata.v1.MetadataService.DeleteFile:output_type -> proto.metadata.v1.DeleteFileResponse
-	8,  // 22: proto.metadata.v1.MetadataService.ListFiles:output_type -> proto.metadata.v1.ListFilesResponse
-	10, // 23: proto.metadata.v1.MetadataService.CommitChunk:output_type -> proto.metadata.v1.CommitChunkResponse
-	12, // 24: proto.metadata.v1.MetadataService.GetChunkLocations:output_type -> proto.metadata.v1.GetChunkLocationsResponse
-	14, // 25: proto.metadata.v1.MetadataService.ReportCorruption:output_type -> proto.metadata.v1.ReportCorruptionResponse
-	16, // 26: proto.metadata.v1.MetadataService.RegisterNode:output_type -> proto.metadata.v1.RegisterNodeResponse
-	18, // 27: proto.metadata.v1.MetadataService.DeregisterNode:output_type -> proto.metadata.v1.DeregisterNodeResponse
-	20, // 28: proto.metadata.v1.MetadataService.Heartbeat:output_type -> proto.metadata.v1.HeartbeatResponse
-	23, // 29: proto.metadata.v1.MetadataService.ReportRepairFailure:output_type -> proto.metadata.v1.ReportRepairFailureResponse
-	19, // [19:30] is the sub-list for method output_type
-	8,  // [8:19] is the sub-list for method input_type
+	9,  // 11: proto.metadata.v1.MetadataService.ListFiles:input_type -> proto.metadata.v1.ListFilesRequest
+	7,  // 12: proto.metadata.v1.MetadataService.CommitFile:input_type -> proto.metadata.v1.CommitFileRequest
+	11, // 13: proto.metadata.v1.MetadataService.CommitChunk:input_type -> proto.metadata.v1.CommitChunkRequest
+	13, // 14: proto.metadata.v1.MetadataService.GetChunkLocations:input_type -> proto.metadata.v1.GetChunkLocationsRequest
+	15, // 15: proto.metadata.v1.MetadataService.ReportCorruption:input_type -> proto.metadata.v1.ReportCorruptionRequest
+	17, // 16: proto.metadata.v1.MetadataService.RegisterNode:input_type -> proto.metadata.v1.RegisterNodeRequest
+	19, // 17: proto.metadata.v1.MetadataService.DeregisterNode:input_type -> proto.metadata.v1.DeregisterNodeRequest
+	21, // 18: proto.metadata.v1.MetadataService.Heartbeat:input_type -> proto.metadata.v1.HeartbeatRequest
+	24, // 19: proto.metadata.v1.MetadataService.ReportRepairFailure:input_type -> proto.metadata.v1.ReportRepairFailureRequest
+	1,  // 20: proto.metadata.v1.MetadataService.CreateFile:output_type -> proto.metadata.v1.CreateFileResponse
+	4,  // 21: proto.metadata.v1.MetadataService.GetFile:output_type -> proto.metadata.v1.GetFileResponse
+	6,  // 22: proto.metadata.v1.MetadataService.DeleteFile:output_type -> proto.metadata.v1.DeleteFileResponse
+	10, // 23: proto.metadata.v1.MetadataService.ListFiles:output_type -> proto.metadata.v1.ListFilesResponse
+	8,  // 24: proto.metadata.v1.MetadataService.CommitFile:output_type -> proto.metadata.v1.CommitFileResponse
+	12, // 25: proto.metadata.v1.MetadataService.CommitChunk:output_type -> proto.metadata.v1.CommitChunkResponse
+	14, // 26: proto.metadata.v1.MetadataService.GetChunkLocations:output_type -> proto.metadata.v1.GetChunkLocationsResponse
+	16, // 27: proto.metadata.v1.MetadataService.ReportCorruption:output_type -> proto.metadata.v1.ReportCorruptionResponse
+	18, // 28: proto.metadata.v1.MetadataService.RegisterNode:output_type -> proto.metadata.v1.RegisterNodeResponse
+	20, // 29: proto.metadata.v1.MetadataService.DeregisterNode:output_type -> proto.metadata.v1.DeregisterNodeResponse
+	22, // 30: proto.metadata.v1.MetadataService.Heartbeat:output_type -> proto.metadata.v1.HeartbeatResponse
+	25, // 31: proto.metadata.v1.MetadataService.ReportRepairFailure:output_type -> proto.metadata.v1.ReportRepairFailureResponse
+	20, // [20:32] is the sub-list for method output_type
+	8,  // [8:20] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1707,7 +1823,7 @@ func file_proto_metadata_v1_metadata_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_metadata_v1_metadata_proto_rawDesc), len(file_proto_metadata_v1_metadata_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
