@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/raft"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"github.com/satyam709/distributed-fs/metadata/placement"
 )
 
 const (
@@ -26,7 +27,7 @@ type RepairScheduler struct {
 	pendingJobs       map[string][]string // nodeID → list of pending job IDs
 	jobs              chan string         // job IDs to process
 	replicationFactor int
-	placementStrategy PlacementStrategy
+	placementStrategy placement.PlacementStrategy
 	logger            *logging.CLogger
 }
 
@@ -268,13 +269,7 @@ func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, err
 	return nil
 }
 
-type PlacementStrategy interface {
-	SelectNodes(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectNodeReverse(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry
-}
-
-func NewRepairScheduler(raft *raft.Raft, mfsm *fsm.MetadataFSM, placement PlacementStrategy, rf int) *RepairScheduler {
+func NewRepairScheduler(raft *raft.Raft, mfsm *fsm.MetadataFSM, placement placement.PlacementStrategy, rf int) *RepairScheduler {
 	newScheduler := &RepairScheduler{
 		fsm:               mfsm,
 		jobs:              make(chan string, WORKER_COUNT),
