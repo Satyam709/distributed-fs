@@ -644,9 +644,10 @@ func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) er
 
 	newJob := &RepairJob{
 		JobID:        req.JobID,
-		ChunkID:      "",
-		SourceNodeID: "",
-		TargetNodeID: "",
+		ChunkID:      req.ChunkID,
+		DeleteSource: req.DeleteSource,
+		SourceNodeID: req.SourceNode,
+		TargetNodeID: req.TargetNode,
 		Status:       RepairStatusPending,
 		Attempts:     0,
 		CreatedAt:    req.CreatedAt,
@@ -669,6 +670,9 @@ func (mfsm *MetadataFSM) handleCmdUpdateRepairJob(req CommandUpdateRepairJob) er
 	job.UpdatedAt = req.UpdatedAt
 	job.Error = req.Error
 	job.Attempts = req.Attempts
+	if req.SourceNode != "" {
+		job.SourceNodeID = req.SourceNode
+	}
 	return nil
 }
 

@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"sync"
 	"time"
 
@@ -89,9 +88,15 @@ func (rs *RepairScheduler) TriggerRepair(deadNodeID string) error {
 func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm.NodeEntry, deficit int) {
 	// underreplicated
 	if deficit > 0 {
+		if len(liveReplicas) == 0 {
+			rs.logger.Warn("cannot schedule repair with no live replicas", "chunkID", chunkID)
+			return
+		}
+
 		newNodes, err := rs.placementStrategy.SelectNodes(chunkID, deficit, liveReplicas...)
 		if err != nil {
 			rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
+			return
 		}
 		for _, node := range newNodes {
 			jid := uuid.NewString()
@@ -121,9 +126,10 @@ func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm
 		}
 	} else {
 		// overreplicated
-		deletingNodes, err := rs.placementStrategy.SelectNodeReverse(chunkID, deficit)
+		deletingNodes, err := rs.placementStrategy.SelectNodeReverse(chunkID, -deficit)
 		if err != nil {
 			rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
+			return
 		}
 		for _, node := range deletingNodes {
 			jid := uuid.NewString()
@@ -166,8 +172,8 @@ func (rs *RepairScheduler) executeJob(jobID string) {
 	}
 
 	rs.mutex.Lock()
-	defer rs.mutex.Unlock()
-	rs.pendingJobs[job.SourceNodeID] = append(rs.pendingJobs[job.SourceNodeID], jobID)
+	rs.pendingJobs[job.SourceNodeID] = appendUnique(rs.pendingJobs[job.SourceNodeID], jobID)
+	rs.mutex.Unlock()
 
 	// mark this job as INPROGRESS
 	err = rs.fsm.UpdateRepairJobStatus(rs.raft, jobID, fsm.RepairStatusInProgress)
@@ -182,12 +188,25 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 	stuckJobs, err := rs.fsm.GetJobsByStatus(fsm.RepairStatusInProgress)
 	if err != nil {
 		rs.logger.Error("failed to get stuckjobs", err)
+		return
 	}
 	for _, val := range stuckJobs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		liveReplicas, err := rs.fsm.GetChunkLocations(val.ChunkID)
 		if err != nil {
-			rs.logger.Error("cannot trigger repair", err, "chunkID")
+			rs.logger.Error("cannot trigger repair", err, "chunkID", val.ChunkID)
+			continue
 		}
+		if len(liveReplicas) == 0 {
+			rs.logger.Warn("cannot recover repair job with no live replicas", "jobID", val.JobID, "chunkID", val.ChunkID)
+			continue
+		}
+
 		deficit := rs.replicationFactor - len(liveReplicas)
 		if deficit == 0 {
 			continue
@@ -202,8 +221,10 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 		}
 
 		if sourceNodeStillAlive {
-			rs.jobs <- val.JobID
-			return
+			if !rs.enqueueJob(ctx, val.JobID) {
+				return
+			}
+			continue
 		}
 
 		cmd := fsm.CommandUpdateRepairJob{
@@ -225,7 +246,9 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 			rs.logger.Error("schedule propsing failed", err, "chunkID", val.ChunkID)
 			continue
 		}
-		rs.jobs <- val.JobID
+		if !rs.enqueueJob(ctx, val.JobID) {
+			return
+		}
 	}
 }
 
@@ -242,38 +265,79 @@ func (rs *RepairScheduler) GetPendingJobsForNode(nodeID string) []string {
 
 // OnJobComplete is called by gRPC handler when a storage node reports repair outcome. Proposes CmdUpdateRepairJob with Done or Failed status. If failed and chunk still under-replicated, re-schedules.
 func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, errorMsg string) error {
-	if success {
-		rs.mutex.Lock()
-		jobsForNode, ok := rs.pendingJobs[nodeid]
-		if !ok {
-			rs.mutex.Unlock()
-			return errors.New("invalid node")
+	rs.mutex.Lock()
+	if jobsForNode, ok := rs.pendingJobs[nodeid]; ok {
+		removed := removeJob(jobsForNode, jobID)
+		if len(removed) == 0 {
+			delete(rs.pendingJobs, nodeid)
+		} else {
+			rs.pendingJobs[nodeid] = removed
 		}
-
-		foundAt := -1
-		for idx, val := range jobsForNode {
-			if val == jobID {
-				foundAt = idx
-				break
-			}
-		}
-		if foundAt < 0 {
-			rs.mutex.Unlock()
-			return errors.New("invalid jobID")
-		}
-		removed := jobsForNode[:foundAt]
-		removed = append(removed, jobsForNode[foundAt+1:]...)
-		rs.pendingJobs[nodeid] = removed
-		rs.mutex.Unlock()
 	}
+	rs.mutex.Unlock()
+
+	if success {
+		return nil
+	}
+
+	job, err := rs.fsm.GetRepairJob(jobID)
+	if err != nil {
+		return err
+	}
+
+	liveReplicas, err := rs.fsm.GetChunkLocations(job.ChunkID)
+	if err != nil {
+		return err
+	}
+
+	deficit := rs.replicationFactor - len(liveReplicas)
+	if deficit > 0 {
+		rs.logger.Warn("repair job failed, rescheduling", "jobID", jobID, "chunkID", job.ChunkID, "err", errorMsg)
+		rs.scheduleRepairJobs(job.ChunkID, liveReplicas, deficit)
+	}
+
 	return nil
 }
 
-func NewRepairScheduler(raft *raft.Raft, mfsm *fsm.MetadataFSM, placement placement.PlacementStrategy, rf int) *RepairScheduler {
+func (rs *RepairScheduler) enqueueJob(ctx context.Context, jobID string) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case rs.jobs <- jobID:
+		return true
+	}
+}
+
+func appendUnique(values []string, v string) []string {
+	for _, existing := range values {
+		if existing == v {
+			return values
+		}
+	}
+	return append(values, v)
+}
+
+func removeJob(values []string, target string) []string {
+	for i, v := range values {
+		if v == target {
+			return append(values[:i], values[i+1:]...)
+		}
+	}
+	return values
+}
+
+type PlacementStrategy interface {
+	SelectNodes(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectNodeReverse(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry
+}
+
+func NewRepairScheduler(raft *raft.Raft, mfsm *fsm.MetadataFSM, placement PlacementStrategy, rf int) *RepairScheduler {
 	newScheduler := &RepairScheduler{
 		fsm:               mfsm,
 		jobs:              make(chan string, WORKER_COUNT),
 		raft:              raft,
+		mutex:             &sync.Mutex{},
 		pendingJobs:       map[string][]string{},
 		placementStrategy: placement,
 		logger:            logging.NewCLogger().With("component", "RepairScheduler"),

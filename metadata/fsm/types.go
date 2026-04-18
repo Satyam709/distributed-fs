@@ -87,6 +87,7 @@ type RepairJob struct {
 	JobID        string       `json:"job_id"`
 	ChunkID      string       `json:"chunk_id"`
 	Error        string       `json:"error"`
+	DeleteSource bool         `json:"delete_source"`
 	SourceNodeID string       `json:"source_node_id"`
 	TargetNodeID string       `json:"target_node_id"`
 	Status       RepairStatus `json:"status"`

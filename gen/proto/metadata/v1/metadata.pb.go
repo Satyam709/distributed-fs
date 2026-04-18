@@ -1185,8 +1185,11 @@ type RepairInstruction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
 	ChunkId       string                 `protobuf:"bytes,2,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
-	TargetNodeId  string                 `protobuf:"bytes,3,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"` // where to copy the chunk from
-	TargetAddr    string                 `protobuf:"bytes,4,opt,name=target_addr,json=targetAddr,proto3" json:"target_addr,omitempty"`
+	SourceNodeId  string                 `protobuf:"bytes,3,opt,name=source_node_id,json=sourceNodeId,proto3" json:"source_node_id,omitempty"` // source node currently holding a healthy replica
+	SourceAddr    string                 `protobuf:"bytes,4,opt,name=source_addr,json=sourceAddr,proto3" json:"source_addr,omitempty"`
+	TargetNodeId  string                 `protobuf:"bytes,5,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"` // destination node that should receive the replica
+	TargetAddr    string                 `protobuf:"bytes,6,opt,name=target_addr,json=targetAddr,proto3" json:"target_addr,omitempty"`
+	DeleteSource  bool                   `protobuf:"varint,7,opt,name=delete_source,json=deleteSource,proto3" json:"delete_source,omitempty"` // true when instruction is to delete local source replica
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1235,6 +1238,20 @@ func (x *RepairInstruction) GetChunkId() string {
 	return ""
 }
 
+func (x *RepairInstruction) GetSourceNodeId() string {
+	if x != nil {
+		return x.SourceNodeId
+	}
+	return ""
+}
+
+func (x *RepairInstruction) GetSourceAddr() string {
+	if x != nil {
+		return x.SourceAddr
+	}
+	return ""
+}
+
 func (x *RepairInstruction) GetTargetNodeId() string {
 	if x != nil {
 		return x.TargetNodeId
@@ -1247,6 +1264,13 @@ func (x *RepairInstruction) GetTargetAddr() string {
 		return x.TargetAddr
 	}
 	return ""
+}
+
+func (x *RepairInstruction) GetDeleteSource() bool {
+	if x != nil {
+		return x.DeleteSource
+	}
+	return false
 }
 
 type ReportRepairResultRequest struct {
@@ -1689,13 +1713,17 @@ const file_proto_metadata_v1_metadata_proto_rawDesc = "" +
 	"chunkCount\"Z\n" +
 	"\x11HeartbeatResponse\x12E\n" +
 	"\vrepair_jobs\x18\x01 \x03(\v2$.proto.metadata.v1.RepairInstructionR\n" +
-	"repairJobs\"\x8c\x01\n" +
+	"repairJobs\"\xf8\x01\n" +
 	"\x11RepairInstruction\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x19\n" +
 	"\bchunk_id\x18\x02 \x01(\tR\achunkId\x12$\n" +
-	"\x0etarget_node_id\x18\x03 \x01(\tR\ftargetNodeId\x12\x1f\n" +
-	"\vtarget_addr\x18\x04 \x01(\tR\n" +
-	"targetAddr\"\x82\x01\n" +
+	"\x0esource_node_id\x18\x03 \x01(\tR\fsourceNodeId\x12\x1f\n" +
+	"\vsource_addr\x18\x04 \x01(\tR\n" +
+	"sourceAddr\x12$\n" +
+	"\x0etarget_node_id\x18\x05 \x01(\tR\ftargetNodeId\x12\x1f\n" +
+	"\vtarget_addr\x18\x06 \x01(\tR\n" +
+	"targetAddr\x12#\n" +
+	"\rdelete_source\x18\a \x01(\bR\fdeleteSource\"\x82\x01\n" +
 	"\x19ReportRepairResultRequest\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1f\n" +
 	"\vjob_succeed\x18\x03 \x01(\bR\n" +

@@ -24,13 +24,21 @@ func TestHandleCmdCreateRepairJob(t *testing.T) {
 			name:  "create new job",
 			setup: func(m *MetadataFSM) {},
 			req: CommandCreateRepairJob{
-				JobID:     "job-1",
-				CreatedAt: now,
+				JobID:        "job-1",
+				CreatedAt:    now,
+				ChunkID:      "chunk-1",
+				SourceNode:   "node-a",
+				TargetNode:   "node-b",
+				DeleteSource: false,
 			},
 			wantErr: false,
 			assertPost: func(t *testing.T, m *MetadataFSM) {
 				j, err := m.GetRepairJob("job-1")
 				require.NoError(t, err)
+				assert.Equal(t, "chunk-1", j.ChunkID)
+				assert.Equal(t, "node-a", j.SourceNodeID)
+				assert.Equal(t, "node-b", j.TargetNodeID)
+				assert.False(t, j.DeleteSource)
 				assert.Equal(t, RepairStatusPending, j.Status)
 				assert.Equal(t, uint64(0), j.Attempts)
 				assert.Equal(t, now, j.CreatedAt)
