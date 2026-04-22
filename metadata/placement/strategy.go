@@ -7,9 +7,12 @@ import (
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 )
 
+// PlacementStrategy is a pure selection algorithm. The caller is
+// responsible for providing the candidate node list — the strategy
+// only decides which nodes to pick from that list.
 type PlacementStrategy interface {
-	SelectNodes(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectNodeReverse(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
 	SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry
 }
 
@@ -24,12 +27,12 @@ func (a SortByMostFreeSpace) Less(i, j int) bool {
 	return a[i].FreeSpace > a[j].FreeSpace
 }
 
-type MostFreeSpaceStrategy struct {
-	Nodes SortByMostFreeSpace
-}
+// MostFreeSpaceStrategy is a stateless strategy that selects nodes with
+// the most available disk space. All node data is provided by the caller.
+type MostFreeSpaceStrategy struct{}
 
-func (mfss MostFreeSpaceStrategy) SelectNodes(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filteredNodes := filterNodes(mfss.Nodes, exclude...)
+func (mfss MostFreeSpaceStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filteredNodes := SortByMostFreeSpace(filterNodes(nodes, exclude...))
 
 	sort.Sort(filteredNodes)
 
@@ -38,8 +41,9 @@ func (mfss MostFreeSpaceStrategy) SelectNodes(chunkID string, count int, exclude
 	}
 	return filteredNodes[:count], nil
 }
-func (mfss MostFreeSpaceStrategy) SelectNodeReverse(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filteredNodes := filterNodes(mfss.Nodes, exclude...)
+
+func (mfss MostFreeSpaceStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filteredNodes := SortByMostFreeSpace(filterNodes(nodes, exclude...))
 
 	sort.Sort(sort.Reverse(filteredNodes))
 
@@ -50,11 +54,12 @@ func (mfss MostFreeSpaceStrategy) SelectNodeReverse(chunkID string, count int, e
 }
 
 func (mfss MostFreeSpaceStrategy) SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry {
-	nodes, err := mfss.SelectNodes("", 1)
-	if err != nil || len(nodes) == 0 {
+	if len(nodes) == 0 {
 		return fsm.NodeEntry{}
 	}
-	return nodes[0]
+	sorted := SortByMostFreeSpace(append([]fsm.NodeEntry(nil), nodes...))
+	sort.Sort(sorted)
+	return sorted[0]
 }
 
 func filterNodes[T interface{ ~[]fsm.NodeEntry }](Nodes T, exclude ...fsm.NodeEntry) T {
@@ -70,4 +75,45 @@ func filterNodes[T interface{ ~[]fsm.NodeEntry }](Nodes T, exclude ...fsm.NodeEn
 		filteredNodes = append(filteredNodes, v)
 	}
 	return filteredNodes
+}
+
+// LeastLoadedStrategy is a stateless strategy that selects nodes with
+// the lowest chunk count (least loaded). Useful for picking a source
+// node during repair — the node with fewer chunks is less likely to
+// be a performance bottleneck.
+type LeastLoadedStrategy struct{}
+
+func (lls LeastLoadedStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filtered := filterNodes(nodes, exclude...)
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].ChunkCount < filtered[j].ChunkCount
+	})
+	if len(filtered) < count {
+		return filtered, fmt.Errorf("there are not enough nodes: required_nodes= %d, have= %d", count, len(filtered))
+	}
+	return filtered[:count], nil
+}
+
+func (lls LeastLoadedStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filtered := filterNodes(nodes, exclude...)
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].ChunkCount > filtered[j].ChunkCount
+	})
+	if len(filtered) < count {
+		return filtered, fmt.Errorf("there are not enough nodes: required_nodes= %d, have= %d", count, len(filtered))
+	}
+	return filtered[:count], nil
+}
+
+func (lls LeastLoadedStrategy) SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry {
+	if len(nodes) == 0 {
+		return fsm.NodeEntry{}
+	}
+	best := nodes[0]
+	for _, n := range nodes[1:] {
+		if n.ChunkCount < best.ChunkCount {
+			best = n
+		}
+	}
+	return best
 }

@@ -14,31 +14,50 @@ import (
 )
 
 const (
-	WORKER_COUNT               = 5 // count of max concurrent workers
-	DEFAULT_REPLICATION_FACTOR = 3
-	MAX_REPLICATION_FACTOR     = 10
+	workerCount              = 5 // count of max concurrent workers
+	defaultReplicationFactor = 3
+	maxReplicationFactor     = 10
+	repairQueueCapacity      = 1024 // buffered job channel to prevent blocking
 )
 
 type RepairScheduler struct {
 	fsm               *fsm.MetadataFSM
-	raft              *raft.Raft
+	propose           func(fsm.MetadataCommand) error
 	mutex             *sync.Mutex
 	pendingJobs       map[string][]string // nodeID → list of pending job IDs
 	jobs              chan string         // job IDs to process
 	replicationFactor int
-	placementStrategy placement.PlacementStrategy
+	sourceStrategy    placement.PlacementStrategy // selects which live replica to read from
+	targetStrategy    placement.PlacementStrategy // selects which nodes to replicate to / remove from
 	logger            *logging.CLogger
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
 }
 
-// Start repair worker goroutines consuming an internal job channel. Also start a recovery goroutine that runs once on startup to recover stuck in-progress jobs.
+// Start launches repair worker goroutines consuming an internal job channel
+// and a recovery goroutine that runs once on startup to recover stuck
+// in-progress jobs.
 func (rs *RepairScheduler) Start(ctx context.Context) {
+	rs.ctx, rs.cancel = context.WithCancel(ctx)
 
-	// spawn workers
-	go rs.spawnWorkers(ctx, WORKER_COUNT)
+	rs.wg.Add(2)
+	go func() {
+		defer rs.wg.Done()
+		rs.spawnWorkers(rs.ctx, workerCount)
+	}()
+	go func() {
+		defer rs.wg.Done()
+		rs.RecoverStuckJobs(rs.ctx)
+	}()
+}
 
-	// run on startup
-	// TODO: make this ctx aware
-	go rs.RecoverStuckJobs(ctx)
+// Stop cancels the context and waits for all workers to drain.
+func (rs *RepairScheduler) Stop() {
+	if rs.cancel != nil {
+		rs.cancel()
+	}
+	rs.wg.Wait()
 }
 
 func (rs *RepairScheduler) spawnWorkers(ctx context.Context, count int) {
@@ -62,49 +81,68 @@ func (rs *RepairScheduler) spawnWorkers(ctx context.Context, count int) {
 	wg.Wait()
 }
 
-// TriggerRepair is called by NodeWatcher when a node is marked dead. Scans all chunks that had a replica on the dead node via fsm.GetChunksByNode(deadNodeID). For each chunk, computes current live replica count. If below replication factor, calculates deficit and calls scheduleRepairJobs for each missing replica.
-func (rs *RepairScheduler) TriggerRepair(deadNodeID string) error {
+// TriggerRepair is called by NodeWatcher when a node is marked dead.
+// Scans all chunks that had a replica on the dead node via
+// fsm.GetChunksByNode(deadNodeID). For each chunk, computes current live
+// replica count. If below replication factor, calculates deficit and calls
+// scheduleRepairJobs for each missing replica.
+func (rs *RepairScheduler) TriggerRepair(deadNodeID string) {
 	chunkIDs, err := rs.fsm.GetChunksByNode(deadNodeID)
 	if err != nil {
-		return err
+		rs.logger.Error("cannot get chunks for dead node", err, "nodeID", deadNodeID)
+		return
 	}
 
 	for _, chkId := range chunkIDs {
 		liveReplicas, err := rs.fsm.GetChunkLocations(chkId)
 		if err != nil {
 			rs.logger.Error("cannot trigger repair", err, "chunkID", chkId)
+			continue
 		}
 		deficit := rs.replicationFactor - len(liveReplicas)
-		if deficit == 0 {
+		if deficit <= 0 {
 			continue
 		}
 		rs.scheduleRepairJobs(chkId, liveReplicas, deficit)
 	}
-
-	return nil
 }
 
-// scheduleRepairJobs picks a source node (live replica with lowest load) and a target node (PlacementStrategy — most free space, not already holding this chunk). Proposes CmdCreateRepairJob through Raft. Enqueues to internal job channel.
+// scheduleRepairJobs uses sourceStrategy to pick the best source node
+// and targetStrategy to pick target nodes. Proposes CmdCreateRepairJob
+// through Raft. Enqueues to internal job channel (non-blocking to
+// prevent deadlocks).
 func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm.NodeEntry, deficit int) {
-	// underreplicated
 	if deficit > 0 {
+		// under-replicated
 		if len(liveReplicas) == 0 {
 			rs.logger.Warn("cannot schedule repair with no live replicas", "chunkID", chunkID)
 			return
 		}
 
-		newNodes, err := rs.placementStrategy.SelectNodes(chunkID, deficit, liveReplicas...)
+		// Fetch all live nodes as candidates; the strategy will exclude current replicas
+		liveNodes, err := rs.fsm.GetLiveNodes()
+		if err != nil {
+			rs.logger.Error("cannot get live nodes for placement", err, "chunkID", chunkID)
+			return
+		}
+
+		newNodes, err := rs.targetStrategy.SelectNodes(liveNodes, chunkID, deficit, liveReplicas...)
 		if err != nil {
 			rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
 			return
 		}
+
+		// Delegate source selection to the source strategy
+		source := rs.sourceStrategy.SelectPrimary(liveReplicas)
+		sourceNode := source.NodeID
+
 		for _, node := range newNodes {
 			jid := uuid.NewString()
 			cmd := fsm.CommandCreateRepairJob{
 				JobID:      jid,
 				CreatedAt:  time.Now(),
 				ChunkID:    chunkID,
-				SourceNode: liveReplicas[0].NodeID,
+				SourceNode: sourceNode,
 				TargetNode: node.NodeID,
 			}
 
@@ -113,20 +151,25 @@ func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm
 				rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
 				continue
 			}
-			err = fsm.Propose(rs.raft, fsm.MetadataCommand{
+			err = rs.propose(fsm.MetadataCommand{
 				Type:    fsm.CmdCreateRepairJob,
 				Payload: payload,
 			})
 			if err != nil {
-				rs.logger.Error("schedule propsing failed", err, "chunkID", chunkID)
+				rs.logger.Error("schedule proposing failed", err, "chunkID", chunkID)
 				continue
 			}
 
-			rs.jobs <- jid
+			select {
+			case rs.jobs <- jid:
+			default:
+				rs.logger.Warn("repair job queue full, dropping job", "jobID", jid, "chunkID", chunkID)
+			}
 		}
 	} else {
-		// overreplicated
-		deletingNodes, err := rs.placementStrategy.SelectNodeReverse(chunkID, -deficit)
+		// over-replicated
+		// Pass the chunk's live replicas; the target strategy picks which to remove
+		deletingNodes, err := rs.targetStrategy.SelectNodeReverse(liveReplicas, chunkID, -deficit)
 		if err != nil {
 			rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
 			return
@@ -146,15 +189,21 @@ func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm
 				rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
 				continue
 			}
-			err = fsm.Propose(rs.raft, fsm.MetadataCommand{
+			err = rs.propose(fsm.MetadataCommand{
 				Type:    fsm.CmdCreateRepairJob,
 				Payload: payload,
 			})
 			if err != nil {
-				rs.logger.Error("schedule propsing failed", err, "chunkID", chunkID)
+				rs.logger.Error("schedule proposing failed", err, "chunkID", chunkID)
 				continue
 			}
-			rs.jobs <- jid
+
+			// TODO: review this drop of job and its retry
+			select {
+			case rs.jobs <- jid:
+			default:
+				rs.logger.Warn("repair job queue full, dropping job", "jobID", jid, "chunkID", chunkID)
+			}
 		}
 	}
 }
@@ -176,13 +225,29 @@ func (rs *RepairScheduler) executeJob(jobID string) {
 	rs.mutex.Unlock()
 
 	// mark this job as INPROGRESS
-	err = rs.fsm.UpdateRepairJobStatus(rs.raft, jobID, fsm.RepairStatusInProgress)
+	updateCmd := fsm.CommandUpdateRepairJob{
+		JobID:     jobID,
+		Status:    fsm.RepairStatusInProgress,
+		UpdatedAt: time.Now(),
+	}
+	payload, err := json.Marshal(updateCmd)
+	if err != nil {
+		rs.logger.Error("job execution failed", err, "jobId", jobID)
+		return
+	}
+	err = rs.propose(fsm.MetadataCommand{
+		Type:    fsm.CmdUpdateRepairJob,
+		Payload: payload,
+	})
 	if err != nil {
 		rs.logger.Error("job execution failed", err, "jobId", jobID)
 	}
 }
 
-// RecoverStuckJobs scans all jobs with status InProgress via fsm.GetJobsByStatus(InProgress). For each, checks if source node is still alive. If not, resets job to pending and re-enqueues with a new source node.
+// RecoverStuckJobs scans all jobs with status InProgress via
+// fsm.GetJobsByStatus(InProgress). For each, checks if source node is
+// still alive. If not, resets job to pending and re-enqueues with a new
+// source node.
 func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 	rs.logger.Info("recovering the pending jobs...")
 	stuckJobs, err := rs.fsm.GetJobsByStatus(fsm.RepairStatusInProgress)
@@ -208,7 +273,7 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 		}
 
 		deficit := rs.replicationFactor - len(liveReplicas)
-		if deficit == 0 {
+		if deficit <= 0 {
 			continue
 		}
 
@@ -227,9 +292,10 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 			continue
 		}
 
+		newSource := rs.sourceStrategy.SelectPrimary(liveReplicas)
 		cmd := fsm.CommandUpdateRepairJob{
 			JobID:      val.JobID,
-			SourceNode: liveReplicas[0].NodeID,
+			SourceNode: newSource.NodeID,
 			Status:     fsm.RepairStatusPending,
 			UpdatedAt:  time.Now(),
 		}
@@ -238,12 +304,12 @@ func (rs *RepairScheduler) RecoverStuckJobs(ctx context.Context) {
 			rs.logger.Error("scheduling failed", err, "chunkID", val.ChunkID)
 			continue
 		}
-		err = fsm.Propose(rs.raft, fsm.MetadataCommand{
+		err = rs.propose(fsm.MetadataCommand{
 			Type:    fsm.CmdUpdateRepairJob,
 			Payload: payload,
 		})
 		if err != nil {
-			rs.logger.Error("schedule propsing failed", err, "chunkID", val.ChunkID)
+			rs.logger.Error("schedule proposing failed", err, "chunkID", val.ChunkID)
 			continue
 		}
 		if !rs.enqueueJob(ctx, val.JobID) {
@@ -263,7 +329,10 @@ func (rs *RepairScheduler) GetPendingJobsForNode(nodeID string) []string {
 	return append([]string(nil), jobs...)
 }
 
-// OnJobComplete is called by gRPC handler when a storage node reports repair outcome. Proposes CmdUpdateRepairJob with Done or Failed status. If failed and chunk still under-replicated, re-schedules.
+// OnJobComplete is called by gRPC handler when a storage node reports
+// repair outcome. Removes the job from the pending map. On success,
+// proposes the appropriate chunk replica update through Raft. On failure,
+// re-schedules if the chunk is still under-replicated.
 func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, errorMsg string) error {
 	rs.mutex.Lock()
 	if jobsForNode, ok := rs.pendingJobs[nodeid]; ok {
@@ -276,13 +345,18 @@ func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, err
 	}
 	rs.mutex.Unlock()
 
-	if success {
-		return nil
-	}
-
 	job, err := rs.fsm.GetRepairJob(jobID)
 	if err != nil {
 		return err
+	}
+
+	if success {
+		if job.DeleteSource {
+			// Over-replicated repair: evict the source node's replica
+			return rs.proposeEvictChunk(job.ChunkID, job.SourceNodeID, "over-replicated repair completed")
+		}
+		// Under-replicated repair: register the new replica on the target node
+		return rs.proposeAddReplica(job.ChunkID, job.TargetNodeID)
 	}
 
 	liveReplicas, err := rs.fsm.GetChunkLocations(job.ChunkID)
@@ -297,6 +371,39 @@ func (rs *RepairScheduler) OnJobComplete(nodeid, jobID string, success bool, err
 	}
 
 	return nil
+}
+
+// proposeAddReplica submits a CmdAddChunkReplica through Raft to register
+// a new replica node for the given chunk.
+func (rs *RepairScheduler) proposeAddReplica(chunkID, nodeID string) error {
+	cmd := fsm.CommandAddChunkReplica{ChunkID: chunkID, NodeID: nodeID}
+	payload, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	return rs.propose(fsm.MetadataCommand{
+		Type:    fsm.CmdAddChunkReplica,
+		Payload: payload,
+	})
+}
+
+// proposeEvictChunk submits a CmdEvictChunkFromNode through Raft to remove
+// a node from the given chunk's replica list.
+func (rs *RepairScheduler) proposeEvictChunk(chunkID, nodeID, reason string) error {
+	cmd := fsm.CommandEvictChunkFromNode{
+		ChunkID:   chunkID,
+		NodeID:    nodeID,
+		EvictedAt: time.Now(),
+		Reason:    reason,
+	}
+	payload, err := json.Marshal(cmd)
+	if err != nil {
+		return err
+	}
+	return rs.propose(fsm.MetadataCommand{
+		Type:    fsm.CmdEvictChunkFromNode,
+		Payload: payload,
+	})
 }
 
 func (rs *RepairScheduler) enqueueJob(ctx context.Context, jobID string) bool {
@@ -326,25 +433,42 @@ func removeJob(values []string, target string) []string {
 	return values
 }
 
-type PlacementStrategy interface {
-	SelectNodes(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectNodeReverse(chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry
-}
-
-func NewRepairScheduler(raft *raft.Raft, mfsm *fsm.MetadataFSM, placement PlacementStrategy, rf int) *RepairScheduler {
+func NewRepairScheduler(r *raft.Raft, mfsm *fsm.MetadataFSM, source, target placement.PlacementStrategy, rf int) *RepairScheduler {
 	newScheduler := &RepairScheduler{
-		fsm:               mfsm,
-		jobs:              make(chan string, WORKER_COUNT),
-		raft:              raft,
-		mutex:             &sync.Mutex{},
-		pendingJobs:       map[string][]string{},
-		placementStrategy: placement,
-		logger:            logging.NewCLogger().With("component", "RepairScheduler"),
+		fsm: mfsm,
+		propose: func(cmd fsm.MetadataCommand) error {
+			return fsm.Propose(r, cmd)
+		},
+		jobs:           make(chan string, repairQueueCapacity),
+		mutex:          &sync.Mutex{},
+		pendingJobs:    map[string][]string{},
+		sourceStrategy: source,
+		targetStrategy: target,
+		logger:         logging.NewCLogger().With("component", "RepairScheduler"),
 	}
 	if rf <= 0 {
-		rf = DEFAULT_REPLICATION_FACTOR
+		rf = defaultReplicationFactor
 	}
-	newScheduler.replicationFactor = min(rf, MAX_REPLICATION_FACTOR)
+	newScheduler.replicationFactor = min(rf, maxReplicationFactor)
 	return newScheduler
+}
+
+// newTestableScheduler creates a RepairScheduler with a custom propose
+// function for testing. Not exported — used only by tests in this package.
+func newTestableScheduler(mfsm *fsm.MetadataFSM, source, target placement.PlacementStrategy, rf int, proposeFn func(fsm.MetadataCommand) error) *RepairScheduler {
+	rs := &RepairScheduler{
+		fsm:            mfsm,
+		propose:        proposeFn,
+		jobs:           make(chan string, repairQueueCapacity),
+		mutex:          &sync.Mutex{},
+		pendingJobs:    map[string][]string{},
+		sourceStrategy: source,
+		targetStrategy: target,
+		logger:         logging.NewCLogger().With("component", "RepairScheduler"),
+	}
+	if rf <= 0 {
+		rf = defaultReplicationFactor
+	}
+	rs.replicationFactor = min(rf, maxReplicationFactor)
+	return rs
 }

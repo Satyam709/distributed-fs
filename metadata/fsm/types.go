@@ -15,10 +15,9 @@ const (
 type ChunkStatus string
 
 const (
-	ChunkStatusRequestAllocation ChunkStatus = "allocated"
-	ChunkStatusAllocated         ChunkStatus = "allocated"
-	ChunkStatusComplete          ChunkStatus = "complete"
-	ChunkStatusLost              ChunkStatus = "lost"
+	ChunkStatusAllocated ChunkStatus = "allocated"
+	ChunkStatusComplete  ChunkStatus = "complete"
+	ChunkStatusLost      ChunkStatus = "lost"
 )
 
 // NodeStatus represents the health state of a storage node.

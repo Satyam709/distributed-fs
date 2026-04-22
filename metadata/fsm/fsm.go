@@ -247,6 +247,13 @@ func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
 		}
 		return mfsm.handleCmdUpdateRepairJob(req)
 
+	case CmdAddChunkReplica:
+		var req CommandAddChunkReplica
+		if err := json.Unmarshal(cmd.Payload, &req); err != nil {
+			return err
+		}
+		return mfsm.handleCmdAddChunkReplica(req)
+
 	default:
 		mfsm.logger.Error("Apply: unknown command type", nil, "type", cmd.Type)
 		return errors.New("unknown command type")
@@ -468,7 +475,7 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 			ChunkID:    cid,
 			FileID:     req.FileID,
 			ChunkIndex: i,
-			Status:     ChunkStatusRequestAllocation,
+			Status:     ChunkStatusAllocated,
 		})
 	}
 
@@ -673,6 +680,25 @@ func (mfsm *MetadataFSM) handleCmdUpdateRepairJob(req CommandUpdateRepairJob) er
 	if req.SourceNode != "" {
 		job.SourceNodeID = req.SourceNode
 	}
+	return nil
+}
+
+// handleCmdAddChunkReplica adds a single node to a chunk's replica list.
+// This is used after a successful repair to register the new replica.
+// The operation is idempotent — if the node is already present, it's a no-op.
+func (mfsm *MetadataFSM) handleCmdAddChunkReplica(req CommandAddChunkReplica) error {
+	chunk, err := mfsm.GetChunk(req.ChunkID)
+	if err != nil {
+		return errors.Join(errors.New("cmdAddChunkReplica: "), err)
+	}
+	mfsm.crMutex.Lock()
+	defer mfsm.crMutex.Unlock()
+	for _, nid := range chunk.Replicas {
+		if nid == req.NodeID {
+			return nil // already present, idempotent
+		}
+	}
+	chunk.Replicas = append(chunk.Replicas, req.NodeID)
 	return nil
 }
 

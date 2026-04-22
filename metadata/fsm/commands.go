@@ -70,6 +70,10 @@ const (
 	// CmdUpdateRepairJob — triggered by storage-node repair result.
 	// Updates RepairJob status (done/failed), attempt count, and error.
 	CmdUpdateRepairJob
+
+	// CmdAddChunkReplica — triggered by RepairScheduler after successful repair.
+	// Adds a single node to a chunk's replica list.
+	CmdAddChunkReplica
 )
 
 // MetadataCommand is the generic envelope serialised into every Raft log
@@ -188,6 +192,13 @@ type CommandUpdateRepairJob struct {
 	UpdatedAt  time.Time    `json:"updated_at"`
 	Attempts   uint64       `json:"attempts"`
 	Error      string       `json:"error"` // empty on success
+}
+
+// CommandAddChunkReplica adds a single node to a chunk's replica list.
+// Used by the RepairScheduler after a successful repair operation.
+type CommandAddChunkReplica struct {
+	ChunkID string `json:"chunk_id"`
+	NodeID  string `json:"node_id"`
 }
 
 // Propose serialises the given MetadataCommand and submits it to the

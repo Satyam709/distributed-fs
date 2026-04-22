@@ -45,7 +45,7 @@ func TestHandleCmdCreateFile(t *testing.T) {
 					require.NoError(t, err)
 					assert.Equal(t, "file-1", c.FileID)
 					assert.Equal(t, i, c.ChunkIndex)
-					assert.Equal(t, ChunkStatusRequestAllocation, c.Status)
+					assert.Equal(t, ChunkStatusAllocated, c.Status)
 				}
 			},
 		},
