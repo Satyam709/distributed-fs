@@ -107,6 +107,22 @@ func (rs *RepairScheduler) TriggerRepair(deadNodeID string) {
 	}
 }
 
+// ScheduleRepairForChunk evaluates a single chunk for under-replication and
+// schedules repair jobs if needed. It is a no-op when the chunk is
+// adequately replicated.
+func (rs *RepairScheduler) ScheduleRepairForChunk(chunkID string) {
+	liveReplicas, err := rs.fsm.GetChunkLocations(chunkID)
+	if err != nil {
+		rs.logger.Error("cannot schedule repair for chunk", err, "chunkID", chunkID)
+		return
+	}
+	deficit := rs.replicationFactor - len(liveReplicas)
+	if deficit <= 0 {
+		return
+	}
+	rs.scheduleRepairJobs(chunkID, liveReplicas, deficit)
+}
+
 // scheduleRepairJobs uses sourceStrategy to pick the best source node
 // and targetStrategy to pick target nodes. Proposes CmdCreateRepairJob
 // through Raft. Enqueues to internal job channel (non-blocking to

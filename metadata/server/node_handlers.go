@@ -6,6 +6,8 @@ import (
 
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type repairInstructionLookup interface {
@@ -17,14 +19,55 @@ func (h *MetadataServiceHandler) RegisterNode(ctx context.Context, req *pb.Regis
 	if !h.isLeader() {
 		return nil, h.leaderRedirect()
 	}
-	return nil, nil
+
+	cmd, err := newCommand(fsm.CmdRegisterNode, fsm.CommandRegisterNode{
+		NodeID:     req.NodeId,
+		Address:    req.Address,
+		FreeSpace:  uint64(req.FreeSpace),
+		ChunkCount: uint64(len(req.ChunkIds)),
+		CreatedAt:  time.Now(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error creating register command: %v", err)
+	}
+
+	if err := fsm.Propose(h.raft, cmd); err != nil {
+		return nil, status.Errorf(codes.Internal, "error proposing register command: %v", err)
+	}
+
+	// Schedule reconciliation after the configured delay. If the node
+	// re-registers before the delay expires the old timer is cancelled.
+	h.reconciler.Schedule(req.NodeId, req.ChunkIds)
+
+	return &pb.RegisterNodeResponse{NodeId: req.NodeId}, nil
 }
 
 func (h *MetadataServiceHandler) DeregisterNode(ctx context.Context, req *pb.DeregisterNodeRequest) (*pb.DeregisterNodeResponse, error) {
 	if !h.isLeader() {
 		return nil, h.leaderRedirect()
 	}
-	return nil, nil
+
+	_, err := h.fsm.GetNode(req.NodeId)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "node not found: %s", req.NodeId)
+	}
+
+	cmd, err := newCommand(fsm.CmdDeregisterNode, fsm.CommandDeregisterNode{
+		NodeID:    req.NodeId,
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "error creating deregister command: %v", err)
+	}
+
+	if err := fsm.Propose(h.raft, cmd); err != nil {
+		return nil, status.Errorf(codes.Internal, "error proposing deregister command: %v", err)
+	}
+
+	// Trigger repair for all chunks on this node immediately.
+	h.repairer.TriggerRepair(req.NodeId)
+
+	return &pb.DeregisterNodeResponse{Success: true}, nil
 }
 
 func (h *MetadataServiceHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {

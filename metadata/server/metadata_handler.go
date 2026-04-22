@@ -5,9 +5,10 @@ import (
 
 	"github.com/hashicorp/raft"
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
-	"github.com/satyam709/distributed-fs/internal/raftutil"
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/internal/raftutil"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"github.com/satyam709/distributed-fs/metadata/reconcile"
 	"github.com/satyam709/distributed-fs/metadata/scheduler"
 	"github.com/satyam709/distributed-fs/metadata/watcher"
 	"google.golang.org/grpc/codes"
@@ -20,18 +21,20 @@ type MetadataServiceHandler struct {
 	fsm             *fsm.MetadataFSM
 	repairer        *scheduler.RepairScheduler
 	nodeWatcher     *watcher.NodeWatcher
+	reconciler      *reconcile.Reconciler
 	mu              sync.Mutex
 	heartbeatsCount map[string]int
 	logger          *logging.CLogger
 }
 
-func NewMetadataServiceHandler(r *raft.Raft, f *fsm.MetadataFSM, re *scheduler.RepairScheduler, nw *watcher.NodeWatcher) *MetadataServiceHandler {
+func NewMetadataServiceHandler(r *raft.Raft, f *fsm.MetadataFSM, re *scheduler.RepairScheduler, nw *watcher.NodeWatcher, rec *reconcile.Reconciler) *MetadataServiceHandler {
 	return &MetadataServiceHandler{
 		raft:            r,
 		fsm:             f,
 		heartbeatsCount: map[string]int{},
 		nodeWatcher:     nw,
 		repairer:        re,
+		reconciler:      rec,
 		logger:          logging.NewCLogger().With("component", "metadata-handler"),
 	}
 }

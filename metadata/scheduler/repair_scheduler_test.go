@@ -201,6 +201,51 @@ func TestScheduleRepairJobs_NonBlockingSend(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: ScheduleRepairForChunk
+// ---------------------------------------------------------------------------
+
+func TestScheduleRepairForChunk_UnderReplicated_CreatesJobs(t *testing.T) {
+	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
+	setupBaseState(t, m)
+
+	// RF=3, chunks only have 2 replicas (node-a, node-b) => deficit=1
+	target := fsm.NodeEntry{NodeID: "node-c", FreeSpace: 512}
+	ps := &placementStub{nodes: []fsm.NodeEntry{target}}
+	rs, tp := newTestScheduler(t, m, ps, 3)
+
+	rs.ScheduleRepairForChunk("chunk-1")
+
+	require.Len(t, tp.proposed, 1)
+	assert.Equal(t, fsm.CmdCreateRepairJob, tp.proposed[0].Type)
+	assert.Len(t, rs.jobs, 1)
+}
+
+func TestScheduleRepairForChunk_FullyReplicated_NoOp(t *testing.T) {
+	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
+	setupBaseState(t, m)
+
+	// RF=2, chunks have exactly 2 replicas
+	ps := &placementStub{}
+	rs, tp := newTestScheduler(t, m, ps, 2)
+
+	rs.ScheduleRepairForChunk("chunk-1")
+
+	assert.Empty(t, tp.proposed)
+	assert.Len(t, rs.jobs, 0)
+}
+
+func TestScheduleRepairForChunk_ChunkNotFound(t *testing.T) {
+	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
+	ps := &placementStub{}
+	rs, tp := newTestScheduler(t, m, ps, 3)
+
+	rs.ScheduleRepairForChunk("ghost-chunk")
+
+	assert.Empty(t, tp.proposed)
+	assert.Len(t, rs.jobs, 0)
+}
+
+// ---------------------------------------------------------------------------
 // Tests: TriggerRepair
 // ---------------------------------------------------------------------------
 

@@ -7,20 +7,31 @@ import (
 	"github.com/hashicorp/raft"
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"github.com/satyam709/distributed-fs/metadata/reconcile"
 	"github.com/satyam709/distributed-fs/metadata/scheduler"
 	"github.com/satyam709/distributed-fs/metadata/watcher"
 	"google.golang.org/grpc"
 )
 
-func StartGRPCServer(addr string, r *raft.Raft, f *fsm.MetadataFSM, nw *watcher.NodeWatcher, re *scheduler.RepairScheduler) error {
+// NewGRPCServer builds a gRPC server with the MetadataService handler wired
+// to the given Raft FSM, watcher, scheduler and reconciler.
+func NewGRPCServer(r *raft.Raft, f *fsm.MetadataFSM, nw *watcher.NodeWatcher, re *scheduler.RepairScheduler, rec *reconcile.Reconciler) *grpc.Server {
+	grpcServer := grpc.NewServer()
+	handler := NewMetadataServiceHandler(r, f, re, nw, rec)
+	pb.RegisterMetadataServiceServer(grpcServer, handler)
+	return grpcServer
+}
+
+// StartGRPCServer is a convenience wrapper that binds a TCP listener,
+// registers the MetadataService handler, and blocks serving requests.
+// For graceful shutdown use NewGRPCServer and call Serve on the returned
+// server yourself.
+func StartGRPCServer(addr string, r *raft.Raft, f *fsm.MetadataFSM, nw *watcher.NodeWatcher, re *scheduler.RepairScheduler, rec *reconcile.Reconciler) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
 
-	grpcServer := grpc.NewServer()
-	handler := NewMetadataServiceHandler(r, f, re, nw)
-	pb.RegisterMetadataServiceServer(grpcServer, handler)
-
+	grpcServer := NewGRPCServer(r, f, nw, re, rec)
 	return grpcServer.Serve(lis)
 }
