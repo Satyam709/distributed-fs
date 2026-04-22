@@ -70,6 +70,10 @@ const (
 	// CmdUpdateRepairJob — triggered by storage-node repair result.
 	// Updates RepairJob status (done/failed), attempt count, and error.
 	CmdUpdateRepairJob
+
+	// CmdAddChunkReplica — triggered by RepairScheduler after successful repair.
+	// Adds a single node to a chunk's replica list.
+	CmdAddChunkReplica
 )
 
 // MetadataCommand is the generic envelope serialised into every Raft log
@@ -168,19 +172,33 @@ type CommandMarkChunkLost struct {
 // Repair-job commands
 
 // CommandCreateRepairJob creates a new repair job in pending state.
+// TargetNode=nil, is used to indicate that its a nil replication
+// used with DeleteSource = true, in overreplicated chunks case
 type CommandCreateRepairJob struct {
-	JobID     string    `json:"job_id"`
-	CreatedAt time.Time `json:"created_at"`
+	JobID        string    `json:"job_id"`
+	CreatedAt    time.Time `json:"created_at"`
+	ChunkID      string    `json:"chunk_id"`
+	DeleteSource bool      `json:"delete_source"`
+	SourceNode   string    `json:"source_node"`
+	TargetNode   string    `json:"target_node"`
 }
 
 // CommandUpdateRepairJob mutates an existing repair job's status,
 // attempt counter, and optional error message.
 type CommandUpdateRepairJob struct {
-	JobID     string       `json:"job_id"`
-	Status    RepairStatus `json:"status"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Attempts  uint64       `json:"attempts"`
-	Error     string       `json:"error"` // empty on success
+	JobID      string       `json:"job_id"`
+	Status     RepairStatus `json:"status"`
+	SourceNode string       `json:"source_node"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	Attempts   uint64       `json:"attempts"`
+	Error      string       `json:"error"` // empty on success
+}
+
+// CommandAddChunkReplica adds a single node to a chunk's replica list.
+// Used by the RepairScheduler after a successful repair operation.
+type CommandAddChunkReplica struct {
+	ChunkID string `json:"chunk_id"`
+	NodeID  string `json:"node_id"`
 }
 
 // Propose serialises the given MetadataCommand and submits it to the

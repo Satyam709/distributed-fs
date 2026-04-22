@@ -15,10 +15,9 @@ const (
 type ChunkStatus string
 
 const (
-	ChunkStatusRequestAllocation ChunkStatus = "allocated"
-	ChunkStatusAllocated         ChunkStatus = "allocated"
-	ChunkStatusComplete          ChunkStatus = "complete"
-	ChunkStatusLost              ChunkStatus = "lost"
+	ChunkStatusAllocated ChunkStatus = "allocated"
+	ChunkStatusComplete  ChunkStatus = "complete"
+	ChunkStatusLost      ChunkStatus = "lost"
 )
 
 // NodeStatus represents the health state of a storage node.
@@ -87,6 +86,7 @@ type RepairJob struct {
 	JobID        string       `json:"job_id"`
 	ChunkID      string       `json:"chunk_id"`
 	Error        string       `json:"error"`
+	DeleteSource bool         `json:"delete_source"`
 	SourceNodeID string       `json:"source_node_id"`
 	TargetNodeID string       `json:"target_node_id"`
 	Status       RepairStatus `json:"status"`

@@ -19,7 +19,7 @@ service MetadataService {
   rpc DeregisterNode(DeregisterNodeRequest) returns (DeregisterNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 
-  rpc ReportRepairFailure(ReportRepairFailureRequest) returns (ReportRepairFailureResponse);
+  rpc ReportRepairResult(ReportRepairResultRequest) returns (ReportRepairResultResponse);
 }
 
 message CreateFileRequest {
@@ -143,16 +143,21 @@ message HeartbeatResponse {
 message RepairInstruction {
   string job_id = 1;
   string chunk_id = 2;
-  string target_node_id = 3; // where to copy the chunk from
-  string target_addr = 4;
+  string source_node_id = 3; // source node currently holding a healthy replica
+  string source_addr = 4;
+  string target_node_id = 5; // destination node that should receive the replica
+  string target_addr = 6;
+  bool delete_source = 7; // true when instruction is to delete local source replica
 }
 
-message ReportRepairFailureRequest {
+message ReportRepairResultRequest {
   string job_id = 1;
-  string error = 2;
+  bool job_succeed = 3;
+  string error = 2; // error in case job_succeed = false
+  string node_id = 4;
 }
 
-message ReportRepairFailureResponse {
+message ReportRepairResultResponse {
   bool success = 1;
 }
 

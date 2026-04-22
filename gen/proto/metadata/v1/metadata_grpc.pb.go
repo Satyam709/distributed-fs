@@ -19,18 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MetadataService_CreateFile_FullMethodName          = "/proto.metadata.v1.MetadataService/CreateFile"
-	MetadataService_GetFile_FullMethodName             = "/proto.metadata.v1.MetadataService/GetFile"
-	MetadataService_DeleteFile_FullMethodName          = "/proto.metadata.v1.MetadataService/DeleteFile"
-	MetadataService_ListFiles_FullMethodName           = "/proto.metadata.v1.MetadataService/ListFiles"
-	MetadataService_CommitFile_FullMethodName          = "/proto.metadata.v1.MetadataService/CommitFile"
-	MetadataService_CommitChunk_FullMethodName         = "/proto.metadata.v1.MetadataService/CommitChunk"
-	MetadataService_GetChunkLocations_FullMethodName   = "/proto.metadata.v1.MetadataService/GetChunkLocations"
-	MetadataService_ReportCorruption_FullMethodName    = "/proto.metadata.v1.MetadataService/ReportCorruption"
-	MetadataService_RegisterNode_FullMethodName        = "/proto.metadata.v1.MetadataService/RegisterNode"
-	MetadataService_DeregisterNode_FullMethodName      = "/proto.metadata.v1.MetadataService/DeregisterNode"
-	MetadataService_Heartbeat_FullMethodName           = "/proto.metadata.v1.MetadataService/Heartbeat"
-	MetadataService_ReportRepairFailure_FullMethodName = "/proto.metadata.v1.MetadataService/ReportRepairFailure"
+	MetadataService_CreateFile_FullMethodName         = "/proto.metadata.v1.MetadataService/CreateFile"
+	MetadataService_GetFile_FullMethodName            = "/proto.metadata.v1.MetadataService/GetFile"
+	MetadataService_DeleteFile_FullMethodName         = "/proto.metadata.v1.MetadataService/DeleteFile"
+	MetadataService_ListFiles_FullMethodName          = "/proto.metadata.v1.MetadataService/ListFiles"
+	MetadataService_CommitFile_FullMethodName         = "/proto.metadata.v1.MetadataService/CommitFile"
+	MetadataService_CommitChunk_FullMethodName        = "/proto.metadata.v1.MetadataService/CommitChunk"
+	MetadataService_GetChunkLocations_FullMethodName  = "/proto.metadata.v1.MetadataService/GetChunkLocations"
+	MetadataService_ReportCorruption_FullMethodName   = "/proto.metadata.v1.MetadataService/ReportCorruption"
+	MetadataService_RegisterNode_FullMethodName       = "/proto.metadata.v1.MetadataService/RegisterNode"
+	MetadataService_DeregisterNode_FullMethodName     = "/proto.metadata.v1.MetadataService/DeregisterNode"
+	MetadataService_Heartbeat_FullMethodName          = "/proto.metadata.v1.MetadataService/Heartbeat"
+	MetadataService_ReportRepairResult_FullMethodName = "/proto.metadata.v1.MetadataService/ReportRepairResult"
 )
 
 // MetadataServiceClient is the client API for MetadataService service.
@@ -48,7 +48,7 @@ type MetadataServiceClient interface {
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
 	DeregisterNode(ctx context.Context, in *DeregisterNodeRequest, opts ...grpc.CallOption) (*DeregisterNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	ReportRepairFailure(ctx context.Context, in *ReportRepairFailureRequest, opts ...grpc.CallOption) (*ReportRepairFailureResponse, error)
+	ReportRepairResult(ctx context.Context, in *ReportRepairResultRequest, opts ...grpc.CallOption) (*ReportRepairResultResponse, error)
 }
 
 type metadataServiceClient struct {
@@ -169,10 +169,10 @@ func (c *metadataServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequ
 	return out, nil
 }
 
-func (c *metadataServiceClient) ReportRepairFailure(ctx context.Context, in *ReportRepairFailureRequest, opts ...grpc.CallOption) (*ReportRepairFailureResponse, error) {
+func (c *metadataServiceClient) ReportRepairResult(ctx context.Context, in *ReportRepairResultRequest, opts ...grpc.CallOption) (*ReportRepairResultResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReportRepairFailureResponse)
-	err := c.cc.Invoke(ctx, MetadataService_ReportRepairFailure_FullMethodName, in, out, cOpts...)
+	out := new(ReportRepairResultResponse)
+	err := c.cc.Invoke(ctx, MetadataService_ReportRepairResult_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ type MetadataServiceServer interface {
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
 	DeregisterNode(context.Context, *DeregisterNodeRequest) (*DeregisterNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	ReportRepairFailure(context.Context, *ReportRepairFailureRequest) (*ReportRepairFailureResponse, error)
+	ReportRepairResult(context.Context, *ReportRepairResultRequest) (*ReportRepairResultResponse, error)
 	mustEmbedUnimplementedMetadataServiceServer()
 }
 
@@ -238,8 +238,8 @@ func (UnimplementedMetadataServiceServer) DeregisterNode(context.Context, *Dereg
 func (UnimplementedMetadataServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
 }
-func (UnimplementedMetadataServiceServer) ReportRepairFailure(context.Context, *ReportRepairFailureRequest) (*ReportRepairFailureResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReportRepairFailure not implemented")
+func (UnimplementedMetadataServiceServer) ReportRepairResult(context.Context, *ReportRepairResultRequest) (*ReportRepairResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportRepairResult not implemented")
 }
 func (UnimplementedMetadataServiceServer) mustEmbedUnimplementedMetadataServiceServer() {}
 func (UnimplementedMetadataServiceServer) testEmbeddedByValue()                         {}
@@ -460,20 +460,20 @@ func _MetadataService_Heartbeat_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _MetadataService_ReportRepairFailure_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReportRepairFailureRequest)
+func _MetadataService_ReportRepairResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportRepairResultRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MetadataServiceServer).ReportRepairFailure(ctx, in)
+		return srv.(MetadataServiceServer).ReportRepairResult(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: MetadataService_ReportRepairFailure_FullMethodName,
+		FullMethod: MetadataService_ReportRepairResult_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MetadataServiceServer).ReportRepairFailure(ctx, req.(*ReportRepairFailureRequest))
+		return srv.(MetadataServiceServer).ReportRepairResult(ctx, req.(*ReportRepairResultRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -530,8 +530,8 @@ var MetadataService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _MetadataService_Heartbeat_Handler,
 		},
 		{
-			MethodName: "ReportRepairFailure",
-			Handler:    _MetadataService_ReportRepairFailure_Handler,
+			MethodName: "ReportRepairResult",
+			Handler:    _MetadataService_ReportRepairResult_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

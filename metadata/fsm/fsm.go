@@ -247,6 +247,13 @@ func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
 		}
 		return mfsm.handleCmdUpdateRepairJob(req)
 
+	case CmdAddChunkReplica:
+		var req CommandAddChunkReplica
+		if err := json.Unmarshal(cmd.Payload, &req); err != nil {
+			return err
+		}
+		return mfsm.handleCmdAddChunkReplica(req)
+
 	default:
 		mfsm.logger.Error("Apply: unknown command type", nil, "type", cmd.Type)
 		return errors.New("unknown command type")
@@ -468,7 +475,7 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 			ChunkID:    cid,
 			FileID:     req.FileID,
 			ChunkIndex: i,
-			Status:     ChunkStatusRequestAllocation,
+			Status:     ChunkStatusAllocated,
 		})
 	}
 
@@ -635,16 +642,19 @@ func (mfsm *MetadataFSM) handleCmdMarkChunkLost(req CommandMarkChunkLost) error 
 // they will be populated by the RepairScheduler in a follow-up
 // CmdUpdateRepairJob once placement has been decided.
 func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) error {
-	_, err := mfsm.GetRepairJob(req.JobID)
-	if err == nil {
+	mfsm.jrMutex.RLock()
+	_, exists := mfsm.repairJobRegistry[req.JobID]
+	mfsm.jrMutex.RUnlock()
+	if exists {
 		return errors.New("cmdCreateRepairJob: job already exists")
 	}
 
 	newJob := &RepairJob{
 		JobID:        req.JobID,
-		ChunkID:      "",
-		SourceNodeID: "",
-		TargetNodeID: "",
+		ChunkID:      req.ChunkID,
+		DeleteSource: req.DeleteSource,
+		SourceNodeID: req.SourceNode,
+		TargetNodeID: req.TargetNode,
 		Status:       RepairStatusPending,
 		Attempts:     0,
 		CreatedAt:    req.CreatedAt,
@@ -657,16 +667,38 @@ func (mfsm *MetadataFSM) handleCmdCreateRepairJob(req CommandCreateRepairJob) er
 // attempt counter, and optional error message. Used by the gRPC handler
 // when a storage node reports repair completion or failure.
 func (mfsm *MetadataFSM) handleCmdUpdateRepairJob(req CommandUpdateRepairJob) error {
-	job, err := mfsm.GetRepairJob(req.JobID)
-	if err != nil {
-		return errors.Join(errors.New("cmdUpdateRepairJob: "), err)
-	}
 	mfsm.jrMutex.Lock()
 	defer mfsm.jrMutex.Unlock()
+	job, ok := mfsm.repairJobRegistry[req.JobID]
+	if !ok {
+		return errors.Join(errors.New("cmdUpdateRepairJob: "), ErrJobNotFound)
+	}
 	job.Status = req.Status
 	job.UpdatedAt = req.UpdatedAt
 	job.Error = req.Error
 	job.Attempts = req.Attempts
+	if req.SourceNode != "" {
+		job.SourceNodeID = req.SourceNode
+	}
+	return nil
+}
+
+// handleCmdAddChunkReplica adds a single node to a chunk's replica list.
+// This is used after a successful repair to register the new replica.
+// The operation is idempotent — if the node is already present, it's a no-op.
+func (mfsm *MetadataFSM) handleCmdAddChunkReplica(req CommandAddChunkReplica) error {
+	chunk, err := mfsm.GetChunk(req.ChunkID)
+	if err != nil {
+		return errors.Join(errors.New("cmdAddChunkReplica: "), err)
+	}
+	mfsm.crMutex.Lock()
+	defer mfsm.crMutex.Unlock()
+	for _, nid := range chunk.Replicas {
+		if nid == req.NodeID {
+			return nil // already present, idempotent
+		}
+	}
+	chunk.Replicas = append(chunk.Replicas, req.NodeID)
 	return nil
 }
 
@@ -859,44 +891,45 @@ func (mfsm *MetadataFSM) GetNodeCount() int {
 // Repair reads
 
 // GetRepairJob performs a read-locked lookup of a RepairJob by job ID.
+// Returns a value copy so callers cannot mutate FSM state directly.
 // Returns ErrJobNotFound if the job is not in the registry.
-func (mfsm *MetadataFSM) GetRepairJob(jobID string) (*RepairJob, error) {
+func (mfsm *MetadataFSM) GetRepairJob(jobID string) (RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 	job, ok := mfsm.repairJobRegistry[jobID]
 	if !ok {
-		return nil, ErrJobNotFound
+		return RepairJob{}, ErrJobNotFound
 	}
-	return job, nil
+	return *job, nil
 }
 
 // GetJobsByStatus returns all repair jobs matching the given status.
 // Used for crash recovery (e.g. finding all InProgress jobs after
 // leader failover).
-func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]*RepairJob, error) {
+func (mfsm *MetadataFSM) GetJobsByStatus(status RepairStatus) ([]RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 
-	var jobs []*RepairJob
+	var jobs []RepairJob
 	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == status {
-			jobs = append(jobs, job)
+			jobs = append(jobs, *job)
 		}
 	}
 	return jobs, nil
 }
 
-// GetPendingJobsForNode returns all pending repair jobs where the given
-// node is the source. Used by the heartbeat handler to piggyback repair
-// instructions onto heartbeat responses.
-func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]*RepairJob, error) {
+// GetPendingJobsForNode returns value copies of all pending repair jobs
+// where the given node is the source. Used by the heartbeat handler to
+// piggyback repair instructions onto heartbeat responses.
+func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]RepairJob, error) {
 	mfsm.jrMutex.RLock()
 	defer mfsm.jrMutex.RUnlock()
 
-	var jobs []*RepairJob
+	var jobs []RepairJob
 	for _, job := range mfsm.repairJobRegistry {
 		if job.Status == RepairStatusPending && job.SourceNodeID == nodeID {
-			jobs = append(jobs, job)
+			jobs = append(jobs, *job)
 		}
 	}
 	return jobs, nil
@@ -929,4 +962,33 @@ func (mfsm *MetadataFSM) GetAllNodes() []NodeEntry {
 		nodes = append(nodes, *node)
 	}
 	return nodes
+}
+
+// Proposes the new status through raft
+func (mfsm *MetadataFSM) UpdateRepairJobStatus(raft *raft.Raft, jobid string, status RepairStatus) error {
+	updateJob := CommandUpdateRepairJob{JobID: jobid, Status: status, UpdatedAt: time.Now()}
+	payload, err := json.Marshal(updateJob)
+	if err != nil {
+		return err
+	}
+	cmd := MetadataCommand{Type: CmdUpdateRepairJob, Payload: payload}
+	return Propose(raft, cmd)
+}
+
+func ProposeUpdateNodeSpace(raft *raft.Raft, nodeID string, space uint64, cc uint64) error {
+	us := CommandUpdateNodeSpace{
+		NodeID:     nodeID,
+		FreeSpace:  space,
+		ChunkCount: cc,
+		UpdatedAt:  time.Now(),
+	}
+	payload, err := json.Marshal(us)
+	if err != nil {
+		return err
+	}
+	cmd := MetadataCommand{
+		Type:    CmdUpdateNodeSpace,
+		Payload: payload,
+	}
+	return Propose(raft, cmd)
 }

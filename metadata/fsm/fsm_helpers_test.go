@@ -62,7 +62,7 @@ func seedFile(t *testing.T, m *MetadataFSM, fileID, name string, chunkIDs []stri
 			ChunkID:    cid,
 			FileID:     fileID,
 			ChunkIndex: i,
-			Status:     ChunkStatusRequestAllocation,
+			Status:     ChunkStatusAllocated,
 		}
 	}
 }

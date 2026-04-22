@@ -108,7 +108,7 @@ func seedFullFSM(t *testing.T, m *MetadataFSM) {
 	}
 	m.chunkRegistry["ck-3"] = &ChunkRecord{
 		ChunkID: "ck-3", FileID: "file-beta", ChunkIndex: 0,
-		Status: ChunkStatusRequestAllocation,
+		Status: ChunkStatusAllocated,
 	}
 
 	// Repair jobs
