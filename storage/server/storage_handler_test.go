@@ -48,7 +48,7 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
-	ss, err := NewStorageServer(ds, nil)
+	ss, err := NewStorageServerHandler(ds, nil)
 	require.NoError(t, err)
 	pb_storage.RegisterStorageServiceServer(srv, ss)
 
@@ -504,7 +504,7 @@ func TestVerifyChunk_EmptyChunkId(t *testing.T) {
 
 // TestNewStorageServer_NilStore verifies that passing a nil store returns an error.
 func TestNewStorageServer_NilStore(t *testing.T) {
-	_, err := NewStorageServer(nil, nil)
+	_, err := NewStorageServerHandler(nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Store must not be nil")
 }
@@ -552,7 +552,7 @@ func newTestServerWithReplicator(t *testing.T, r Replicator) pb_storage.StorageS
 
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
-	ss, err := NewStorageServer(ds, nil, r)
+	ss, err := NewStorageServerHandler(ds, nil, r)
 	require.NoError(t, err)
 	pb_storage.RegisterStorageServiceServer(srv, ss)
 	go func() { _ = srv.Serve(lis) }()

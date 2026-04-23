@@ -65,14 +65,14 @@ func (s *StorageNode) Start() error {
 	s.grpcServer = grpc.NewServer(grpc.ConnectionTimeout(s.config.Timeout))
 
 	// StorageService — client-facing RPC (PutChunk, GetChunk, etc.)
-	storageServer, err := server.NewStorageServer(s.store, s.logger, s.replicationManager)
+	storageServer, err := server.NewStorageServerHandler(s.store, s.logger, s.replicationManager)
 	if err != nil {
 		return err
 	}
 	pb_storage.RegisterStorageServiceServer(s.grpcServer, storageServer)
 
 	// ReplicationService — internal P2P RPC (ReplicateChunk)
-	replServer, err := server.NewReplicationServer(s.store, s.logger)
+	replServer, err := server.NewReplicationServerHandler(s.store, s.logger)
 	if err != nil {
 		return err
 	}

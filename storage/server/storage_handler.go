@@ -23,17 +23,17 @@ type Replicator interface {
 	ReplicateToNodes(ctx context.Context, chunkId string, targets []string, async bool) error
 }
 
-// StorageServer implements the StorageServiceServer gRPC interface.
-type StorageServer struct {
+// StorageServerHandler implements the StorageServiceServer gRPC interface.
+type StorageServerHandler struct {
 	pb_storage.UnimplementedStorageServiceServer
 	Store      store.Store
 	Replicator Replicator // optional; nil means no fan-out
 	logger     *logging.CLogger
 }
 
-// NewStorageServer creates a StorageServer with a component-scoped logger.
+// NewStorageServerHandler creates a StorageServer with a component-scoped logger.
 // Returns an error if s is nil. r is optional (nil = no replication fan-out).
-func NewStorageServer(s store.Store, logger *logging.CLogger, r ...Replicator) (*StorageServer, error) {
+func NewStorageServerHandler(s store.Store, logger *logging.CLogger, r ...Replicator) (*StorageServerHandler, error) {
 	if s == nil {
 		return nil, errors.New("StorageServer: Store must not be nil")
 	}
@@ -46,7 +46,7 @@ func NewStorageServer(s store.Store, logger *logging.CLogger, r ...Replicator) (
 	if len(r) > 0 {
 		repl = r[0]
 	}
-	return &StorageServer{Store: s, Replicator: repl, logger: l}, nil
+	return &StorageServerHandler{Store: s, Replicator: repl, logger: l}, nil
 }
 
 // PutChunk receives a client-streaming RPC that delivers chunk data in
@@ -67,7 +67,7 @@ func NewStorageServer(s store.Store, logger *logging.CLogger, r ...Replicator) (
 //   - InvalidArgument — empty stream, stream closed before is_last, or
 //     chunk_id mismatch across frames.
 //   - Internal        — writer initialisation, frame write, or finalize failure.
-func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.PutChunkRequest, pb_storage.PutChunkResponse]) error {
+func (s *StorageServerHandler) PutChunk(stream grpc.ClientStreamingServer[pb_storage.PutChunkRequest, pb_storage.PutChunkResponse]) error {
 	var writer *chunk.ChunkWriter
 	var registeredChunkId string
 	var replicateTo []string // addresses extracted from the first frame
@@ -206,7 +206,7 @@ func (s *StorageServer) PutChunk(stream grpc.ClientStreamingServer[pb_storage.Pu
 //   - InvalidArgument — empty chunk_id
 //   - NotFound        — chunk does not exist in the store
 //   - Internal        — I/O error while reading / streaming
-func (s *StorageServer) GetChunk(req *pb_storage.GetChunkRequest, stream grpc.ServerStreamingServer[pb_storage.GetChunkResponse]) error {
+func (s *StorageServerHandler) GetChunk(req *pb_storage.GetChunkRequest, stream grpc.ServerStreamingServer[pb_storage.GetChunkResponse]) error {
 	chunkId := req.GetChunkId()
 	s.logger.Info("GetChunk: called", slog.String("chunkId", chunkId))
 
@@ -274,7 +274,7 @@ func (s *StorageServer) GetChunk(req *pb_storage.GetChunkRequest, stream grpc.Se
 // Error codes:
 //   - InvalidArgument — empty chunk_id
 //   - Internal        — unexpected I/O error during deletion
-func (s *StorageServer) DeleteChunk(req *pb_storage.DeleteChunkRequest, stream grpc.ServerStreamingServer[pb_storage.DeleteChunkResponse]) error {
+func (s *StorageServerHandler) DeleteChunk(req *pb_storage.DeleteChunkRequest, stream grpc.ServerStreamingServer[pb_storage.DeleteChunkResponse]) error {
 	chunkId := req.GetChunkId()
 	s.logger.Info("DeleteChunk: called", slog.String("chunkId", chunkId))
 
@@ -316,7 +316,7 @@ func (s *StorageServer) DeleteChunk(req *pb_storage.DeleteChunkRequest, stream g
 //   - InvalidArgument — empty chunk_id
 //   - NotFound        — chunk does not exist
 //   - Internal        — unexpected I/O error
-func (s *StorageServer) VerifyChunk(ctx context.Context, req *pb_storage.VerifyChunkRequest) (*pb_storage.VerifyChunkResponse, error) {
+func (s *StorageServerHandler) VerifyChunk(ctx context.Context, req *pb_storage.VerifyChunkRequest) (*pb_storage.VerifyChunkResponse, error) {
 	chunkId := req.GetChunkId()
 	s.logger.Info("VerifyChunk: called", slog.String("chunkId", chunkId))
 

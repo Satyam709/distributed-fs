@@ -43,7 +43,7 @@ func newReplTestServer(t *testing.T) (pb_storage.ReplicationServiceClient, store
 
 	lis := bufconn.Listen(replBufSize)
 	srv := grpc.NewServer()
-	rs, err := server.NewReplicationServer(ds, nil)
+	rs, err := server.NewReplicationServerHandler(ds, nil)
 	require.NoError(t, err)
 	pb_storage.RegisterReplicationServiceServer(srv, rs)
 
@@ -199,6 +199,6 @@ func TestReplicateChunk_ChunkIdMismatch(t *testing.T) {
 
 // TestNewReplicationServer_NilStore verifies that a nil store returns an error.
 func TestNewReplicationServer_NilStore(t *testing.T) {
-	_, err := server.NewReplicationServer(nil, nil)
+	_, err := server.NewReplicationServerHandler(nil, nil)
 	require.Error(t, err)
 }
