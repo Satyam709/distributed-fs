@@ -151,7 +151,9 @@ func (mn *MetadataNode) Start(ctx context.Context) error {
 	}
 	mn.grpcLis = lis
 
-	mn.grpcServer = server.NewGRPCServer(mn.raftInstance, mn.fsm, mn.watcher, mn.scheduler, mn.reconciler)
+	ps := placement.MostFreeSpaceStrategy{}
+
+	mn.grpcServer = server.NewGRPCServer(mn.raftInstance, mn.fsm, mn.watcher, mn.scheduler, mn.reconciler, ps, 3)
 	go func() {
 		if err := mn.grpcServer.Serve(lis); err != nil {
 			mn.logger.Error("gRPC server exited", err)

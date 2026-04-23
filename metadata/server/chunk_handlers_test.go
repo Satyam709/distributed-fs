@@ -72,7 +72,7 @@ func TestNewMetadataServiceHandler_WithReconciler(t *testing.T) {
 	nw := watcher.NewNodeWatcher(m, nil, nil, 0, 0, logging.NewCLogger())
 
 	// This will panic if the constructor signature is wrong.
-	h := NewMetadataServiceHandler(nil, m, rs, nw, rec)
+	h := NewMetadataServiceHandler(nil, m, rs, nw, rec, nil, 0)
 	require.NotNil(t, h)
 	assert.NotNil(t, h.reconciler)
 }
