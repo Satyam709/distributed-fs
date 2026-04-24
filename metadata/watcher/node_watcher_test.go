@@ -167,7 +167,7 @@ func TestSweep_SkipsWhenNotLeader(t *testing.T) {
 	proposer := &mockProposer{leader: false}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, 10*time.Second, 5*time.Second, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, 10*time.Second, 5*time.Second)
 	nw.sweep()
 
 	assert.Empty(t, proposer.getProposed(), "should not propose commands when not leader")
@@ -183,7 +183,7 @@ func TestSweep_MarksStaleNodeDead(t *testing.T) {
 	proposer := &mockProposer{leader: true}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second)
 	nw.sweep()
 
 	proposed := proposer.getProposed()
@@ -204,7 +204,7 @@ func TestSweep_IgnoresFreshNodes(t *testing.T) {
 	proposer := &mockProposer{leader: true}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second)
 	nw.sweep()
 
 	assert.Empty(t, proposer.getProposed(), "should not propose for fresh nodes")
@@ -220,7 +220,7 @@ func TestSweep_IgnoresAlreadyDeadNodes(t *testing.T) {
 	proposer := &mockProposer{leader: true}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second)
 	nw.sweep()
 
 	assert.Empty(t, proposer.getProposed(), "should not re-propose for already dead nodes")
@@ -239,7 +239,7 @@ func TestSweep_MultipleNodes(t *testing.T) {
 	proposer := &mockProposer{leader: true}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, suspectTimeout, 5*time.Second)
 	nw.sweep()
 
 	proposed := proposer.getProposed()
@@ -288,7 +288,7 @@ func TestStartAndStop(t *testing.T) {
 	proposer := &mockProposer{leader: false}
 	repair := &mockRepairTriggerer{}
 
-	nw := NewNodeWatcher(f, proposer, repair, 10*time.Second, 50*time.Millisecond, logging.NewCLogger())
+	nw := NewNodeWatcher(f, proposer, repair, 10*time.Second, 50*time.Millisecond)
 
 	done := make(chan struct{})
 	go func() {

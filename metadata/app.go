@@ -161,21 +161,23 @@ func (a *MetadataApp) initWorkers() {
 		a.scheduler,
 		a.Config.SuspectTimeout,
 		a.Config.WatcherInterval,
-		a.logger.With("component", "NodeWatcher"),
 	)
 
 	if a.storageClient == nil {
 		a.storageClient = reconcile.NewThinStorageClient()
 	}
-	a.reconciler = reconcile.NewReconciler(
+	reconciler, err := reconcile.NewReconciler(
 		a.fsm,
 		proposer,
 		a.scheduler,
 		a.storageClient,
 		a.Config.ReconcileDelay,
 		rf,
-		a.logger.With("component", "Reconciler"),
 	)
+	if err != nil {
+		a.logger.FatalError("initWorkers: ", err)
+	}
+	a.reconciler = reconciler
 }
 
 func (a *MetadataApp) Run(ctx context.Context) error {

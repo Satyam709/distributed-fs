@@ -11,11 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/metadata"
 )
 
 func main() {
-	logger := slog.Default().With(slog.String("component", "main"))
+	logger := logging.NewCLogger().With(slog.String("component", "main"))
 
 	logger.Info("distributed-fs metadata node starting")
 
@@ -23,7 +24,7 @@ func main() {
 
 	app, err := metadata.NewMetadataApp(cfg)
 	if err != nil {
-		logger.Error("failed to create metadata app", "error", err)
+		logger.Error("failed to create metadata app", err)
 		os.Exit(1)
 	}
 
@@ -31,7 +32,7 @@ func main() {
 	defer cancel()
 
 	if err := app.Run(ctx); err != nil {
-		logger.Error("failed to start metadata app", "error", err)
+		logger.Error("failed to start metadata app", err)
 		os.Exit(1)
 	}
 
@@ -42,7 +43,7 @@ func main() {
 	logger.Info("shutdown signal received", "signal", sig.String())
 
 	if err := app.Shutdown(context.Background()); err != nil {
-		logger.Error("failed to shutdown metadata app", "error", err)
+		logger.Error("failed to shutdown metadata app", err)
 		os.Exit(1)
 	}
 

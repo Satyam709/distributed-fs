@@ -7,6 +7,7 @@ package watcher
 
 import (
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -52,7 +53,6 @@ func NewNodeWatcher(
 	repair RepairTriggerer,
 	suspectTimeout time.Duration,
 	interval time.Duration,
-	logger *logging.CLogger,
 ) *NodeWatcher {
 	return &NodeWatcher{
 		fsm:            fsm,
@@ -60,7 +60,7 @@ func NewNodeWatcher(
 		repair:         repair,
 		suspectTimeout: suspectTimeout,
 		interval:       interval,
-		logger:         logger,
+		logger:         logging.NewCLogger().With(slog.String("component", "NodeWatcher")),
 		stopCh:         make(chan struct{}),
 	}
 }
@@ -105,6 +105,7 @@ func (nw *NodeWatcher) sweep() {
 		nw.logger.Debug("NodeWatcher: sweep failed: Not leader")
 		return
 	}
+	nw.logger.Debug("NodeWatcher: sweeping...")
 
 	now := time.Now()
 	nodes := nw.fsm.GetAllNodes()
