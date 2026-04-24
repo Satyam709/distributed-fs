@@ -10,9 +10,12 @@ type StorageNodeConfig struct {
 	Port string
 	// Timeout for connections (0 = no timeout)
 	Timeout time.Duration
+
+	// address of a node in Metadata cluster
+	// probably have to change this
+	MetadataAddr string
 }
 
-// Validate returns an error if any required field is missing.
 func (c StorageNodeConfig) Validate() error {
 	if c.Port == "" {
 		return errors.New("StorageNodeConfig: Port must not be empty")

@@ -10,6 +10,7 @@ import (
 
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage"
+	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/store"
 )
 
@@ -56,9 +57,14 @@ func main() {
 	}
 	logger.Info("disk store ready", slog.String("rootDir", rootDataDir))
 
-	// Start storage node.
-	config := storage.StorageNodeConfig{Port: ":4000", Timeout: 120 * time.Second}
-	node, err := storage.NewStorageNode(config, logger, diskStore)
+	metaClient, err := metaclient.NewMetadataClient(":3000")
+	if err != nil {
+		logger.FatalError("failed to create metadata client", err)
+	}
+	logger.Info("metadata client ready")
+
+	config := storage.StorageNodeConfig{Port: ":4000", Timeout: 120 * time.Second, MetadataAddr: ":3000"}
+	node, err := storage.NewStorageNode(config, logger, diskStore, metaClient)
 	if err != nil {
 		logger.FatalError("failed to create storage node", err)
 	}

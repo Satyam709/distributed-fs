@@ -10,9 +10,11 @@ import (
 	"sync"
 	"time"
 
+	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage/chunk"
+	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/store"
 )
 
@@ -38,12 +40,13 @@ type Replicator interface {
 // ReplicationManager fans out chunk data to replica nodes after a primary write
 // and drains a background repair queue populated by metadata heartbeat responses.
 type ReplicationManager struct {
-	dialer  *PeerDialer
-	store   store.Store
-	policy  RetryPolicy
-	sem     chan struct{} // limits concurrent outbound streams
-	repairQ chan RepairJob
-	logger  *logging.CLogger
+	dialer     *PeerDialer
+	store      store.Store
+	policy     RetryPolicy
+	metaclient metaclient.StorageMetadataClientInterface
+	sem        chan struct{} // limits concurrent outbound streams
+	repairQ    chan RepairJob
+	logger     *logging.CLogger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -51,19 +54,18 @@ type ReplicationManager struct {
 }
 
 // NewReplicationManager creates a manager. Call Start() to launch repair workers.
-func NewReplicationManager(dialer *PeerDialer, s store.Store) *ReplicationManager {
-	l := logging.NewCLogger().With(slog.String("component", "ReplicationManager"))
-
+func NewReplicationManager(dialer *PeerDialer, s store.Store, client metaclient.StorageMetadataClientInterface) *ReplicationManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ReplicationManager{
-		dialer:  dialer,
-		store:   s,
-		policy:  DefaultRetryPolicy(),
-		sem:     make(chan struct{}, maxConcurrentStreams),
-		repairQ: make(chan RepairJob, repairQueueCap),
-		logger:  l,
-		ctx:     ctx,
-		cancel:  cancel,
+		dialer:     dialer,
+		store:      s,
+		policy:     DefaultRetryPolicy(),
+		sem:        make(chan struct{}, maxConcurrentStreams),
+		repairQ:    make(chan RepairJob, repairQueueCap),
+		metaclient: client,
+		logger:     logging.NewCLogger().With(slog.String("component", "ReplicationManager")),
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
@@ -89,13 +91,13 @@ func (m *ReplicationManager) Stop() {
 func (m *ReplicationManager) EnqueueRepair(job RepairJob) bool {
 	select {
 	case m.repairQ <- job:
-		m.logger.Info("ReplicationManager: repair enqueued",
+		m.logger.Debug("ReplicationManager: repair enqueued",
 			slog.String("chunkId", job.ChunkID),
 			slog.String("target", job.Target),
 		)
 		return true
 	default:
-		m.logger.Info("ReplicationManager: repair queue full, dropping job",
+		m.logger.Debug("ReplicationManager: repair queue full, dropping job",
 			slog.String("chunkId", job.ChunkID))
 		return false
 	}
@@ -277,6 +279,8 @@ func (m *ReplicationManager) worker(id int) {
 			err := m.policy.Do(m.ctx, func() error {
 				return m.replicateToSingleNode(m.ctx, job.ChunkID, job.Target)
 			})
+			timedCtx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+			defer cancel()
 			if err != nil {
 				m.logger.Info("repair worker: job failed after retries",
 					slog.Int("worker", id),
@@ -284,13 +288,20 @@ func (m *ReplicationManager) worker(id int) {
 					slog.String("target", job.Target),
 					slog.String("error", err.Error()),
 				)
-				// TODO: call MetadataService.ReportRepairFailure once the metadata client exists.
+				m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
+					JobId:      job.JobID,
+					JobSucceed: false,
+					Error:      err.Error(),
+				})
 			} else {
 				m.logger.Info("repair worker: job succeeded",
 					slog.Int("worker", id),
 					slog.String("chunkId", job.ChunkID),
 				)
-				// TODO: call MetadataService.CommitChunk once the metadata client exists.
+				m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
+					JobId:      job.JobID,
+					JobSucceed: true,
+				})
 			}
 		}
 	}

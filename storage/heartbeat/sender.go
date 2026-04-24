@@ -34,7 +34,7 @@ type HeartbeatSender struct {
 	once       sync.Once
 }
 
-func NewHeartbeatSender(gap time.Duration, client pb_meta.MetadataServiceClient, ni NodeInfo, replicator replication.Replicator) *HeartbeatSender {
+func NewHeartbeatSender(gap time.Duration, client metaclient.StorageMetadataClientInterface, ni NodeInfo, replicator replication.Replicator) *HeartbeatSender {
 	return &HeartbeatSender{
 		gap:        gap,
 		client:     client,
@@ -48,12 +48,18 @@ func (hs *HeartbeatSender) Start(ctx context.Context) {
 	hs.once.Do(func() {
 		hs.ctx, hs.cancel = context.WithCancel(ctx)
 		hs.wg.Add(1)
-		go hs.heartbeatTicker(hs.ctx)
+		go func() {
+			defer hs.wg.Done()
+			hs.heartbeatTicker(hs.ctx)
+		}()
 	})
 }
 
 func (hs *HeartbeatSender) StopAndWait(ctx context.Context) {
-	// cancel internal context
+	hs.once.Do(func() {})
+	if hs.cancel == nil {
+		return
+	}
 	hs.cancel()
 	done := make(chan struct{})
 	go func() {
@@ -62,23 +68,24 @@ func (hs *HeartbeatSender) StopAndWait(ctx context.Context) {
 	}()
 	select {
 	case <-done:
-		// wait done
 	case <-ctx.Done():
-		// wait ctx done -> return
 		return
 	}
 }
 
 func (hs *HeartbeatSender) heartbeatTicker(ctx context.Context) {
-	ticker := time.NewTicker(hs.gap * time.Second)
+	ticker := time.NewTicker(hs.gap)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			res, err := hs.sendBeat(ctx)
-			hs.logger.Warn("heartbeatTicker: failed to send beat", slog.String("err", err.Error()))
-			// process the result
+			if err != nil {
+				hs.logger.Warn("heartbeatTicker: failed to send beat", slog.String("err", err.Error()))
+				continue
+			}
 			hs.processHeartbeatResponse(ctx, res)
 		}
 	}
@@ -106,6 +113,9 @@ func (hs *HeartbeatSender) sendBeat(ctx context.Context) (*pb_meta.HeartbeatResp
 }
 
 func (hs *HeartbeatSender) processHeartbeatResponse(ctx context.Context, res *pb_meta.HeartbeatResponse) {
+	if res == nil {
+		return
+	}
 	outConc := make(chan struct{}, 10)
 
 	droppedCount := 0

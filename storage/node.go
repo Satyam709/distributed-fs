@@ -7,6 +7,7 @@ import (
 
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/replication"
 	"github.com/satyam709/distributed-fs/storage/server"
 	"github.com/satyam709/distributed-fs/storage/store"
@@ -27,7 +28,7 @@ type StorageNode struct {
 
 // NewStorageNode constructs a StorageNode. Returns an error if store or logger
 // is nil. Call Start to bind and begin serving.
-func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.Store) (*StorageNode, error) {
+func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.Store, metaClient metaclient.StorageMetadataClientInterface) (*StorageNode, error) {
 	if store == nil {
 		return nil, errors.New("StorageNode: store must not be nil")
 	}
@@ -36,7 +37,7 @@ func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.
 	}
 
 	dialer := replication.NewPeerDialer()
-	manager := replication.NewReplicationManager(dialer, store)
+	manager := replication.NewReplicationManager(dialer, store, metaClient)
 
 	return &StorageNode{
 		config:             cfg,

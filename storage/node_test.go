@@ -5,14 +5,11 @@ import (
 	"time"
 
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
 
 func makeNode(t *testing.T, port string) *StorageNode {
 	t.Helper()
@@ -38,6 +35,7 @@ func makeNode(t *testing.T, port string) *StorageNode {
 		StorageNodeConfig{Port: port, Timeout: 5 * time.Second},
 		logging.NewCLogger(),
 		ds,
+		&metaclient.MockMetaForNode{},
 	)
 	require.NoError(t, err)
 	return node
