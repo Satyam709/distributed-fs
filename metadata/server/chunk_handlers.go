@@ -24,15 +24,15 @@ func (h *MetadataServiceHandler) CommitChunk(ctx context.Context, req *pb.Commit
 		return nil, status.Errorf(codes.Internal, "error creating commit-chunk command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing commit-chunk command: %v", err)
 	}
 
 	// If confirmed replica count is below replication factor, schedule repair.
-	if _, err := h.fsm.GetChunkLocations(req.ChunkId); err != nil {
-		h.logger.Warn("cannot check chunk locations after commit", "chunkID", req.ChunkId, "err", err.Error())
+	if _, err := h.deps.FSM.GetChunkLocations(req.ChunkId); err != nil {
+		h.deps.Logger.Warn("cannot check chunk locations after commit", "chunkID", req.ChunkId, "err", err.Error())
 	} else {
-		h.repairer.ScheduleRepairForChunk(req.ChunkId)
+		h.deps.Scheduler.ScheduleRepairForChunk(req.ChunkId)
 	}
 
 	return &pb.CommitChunkResponse{Success: true}, nil
@@ -43,7 +43,7 @@ func (h *MetadataServiceHandler) GetChunkLocations(ctx context.Context, req *pb.
 		return nil, h.leaderRedirect()
 	}
 
-	nodes, err := h.fsm.GetChunkLocations(req.ChunkId)
+	nodes, err := h.deps.FSM.GetChunkLocations(req.ChunkId)
 	if err != nil {
 		if err == fsm.ErrChunkNotFound {
 			return nil, status.Errorf(codes.NotFound, "chunk not found: %s", req.ChunkId)
@@ -78,12 +78,12 @@ func (h *MetadataServiceHandler) ReportCorruption(ctx context.Context, req *pb.R
 		return nil, status.Errorf(codes.Internal, "error creating eviction command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing eviction command: %v", err)
 	}
 
 	// If chunk is now under-replicated, schedule repair.
-	h.repairer.ScheduleRepairForChunk(req.ChunkId)
+	h.deps.Scheduler.ScheduleRepairForChunk(req.ChunkId)
 
 	return &pb.ReportCorruptionResponse{Success: true}, nil
 }

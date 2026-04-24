@@ -71,8 +71,14 @@ func TestNewMetadataServiceHandler_WithReconciler(t *testing.T) {
 	rs := scheduler.NewRepairScheduler(nil, m, nil, nil, 3)
 	nw := watcher.NewNodeWatcher(m, nil, nil, 0, 0, logging.NewCLogger())
 
+	deps := &HandlerDeps{
+		FSM:               m,
+		Scheduler:         rs,
+		Watcher:           nw,
+		Reconciler:        rec,
+		ReplicationFactor: 3,
+	}
 	// This will panic if the constructor signature is wrong.
-	h := NewMetadataServiceHandler(nil, m, rs, nw, rec, nil, 0)
+	h := NewMetadataServiceHandler(deps)
 	require.NotNil(t, h)
-	assert.NotNil(t, h.reconciler)
 }

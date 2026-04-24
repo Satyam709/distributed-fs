@@ -15,19 +15,20 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, h.leaderRedirect()
 	}
 	// check duplicate filename
-	_, err := h.fsm.GetFile(req.FileId)
+	_, err := h.deps.FSM.GetFile(req.FileId)
 	if err == nil {
 		return nil, status.Errorf(codes.AlreadyExists, "file with ID '%s' already exists", req.FileId)
 	}
 
 	// get the placements for chunks of file
 	var aliveNodes []fsm.NodeEntry
-	if aliveNodes, err = h.fsm.GetLiveNodes(); err != nil {
+	if aliveNodes, err = h.deps.FSM.GetLiveNodes(); err != nil {
 		return nil, status.Errorf(codes.Internal, "error getting live nodes: %v", err)
 	}
 	var chPlacements []*pb.ChunkPlacement
+	rf := h.deps.ReplicationFactor
 	for _, v := range req.ChunkIds {
-		outNodes, err := h.placementStrategy.SelectNodes(aliveNodes, v, h.replicationCount)
+		outNodes, err := h.deps.TargetPlacement.SelectNodes(aliveNodes, v, rf)
 		if err != nil || len(outNodes) == 0 {
 			return nil, status.Errorf(codes.Internal, "error getting placement for chunk %s: %v", v, err)
 		}
@@ -65,7 +66,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, status.Errorf(codes.Internal, "error creating command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing command: %v", err)
 	}
 
@@ -82,12 +83,12 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 	// direct fsm read - no raft involvement since this is a
 	// read-only operation on the leader's state machine
 
-	file, err := h.fsm.GetFile(req.FileId)
+	file, err := h.deps.FSM.GetFile(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
 	// get all chunks for this file in order
-	chunks, err := h.fsm.GetFileChunks(req.FileId)
+	chunks, err := h.deps.FSM.GetFileChunks(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error fetching file chunks: %v", err)
 	}
@@ -127,7 +128,7 @@ func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteF
 		return nil, h.leaderRedirect()
 	}
 	// verofy file exosts before proposing - fall fast with clear error
-	_, err := h.fsm.GetFile(req.FileId)
+	_, err := h.deps.FSM.GetFile(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
@@ -140,7 +141,7 @@ func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteF
 		return nil, status.Errorf(codes.Internal, "error creating delete command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing delete command: %v", err)
 	}
 	return &pb.DeleteFileResponse{Success: true}, nil
@@ -152,7 +153,7 @@ func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFile
 	}
 	// direct fsm read - rsults already sorted by fileName
 	// files, err := h.fsm.ListFiles(req.Prefix)
-	files, err := h.fsm.ListFiles("") // ignore prefix filter for now
+	files, err := h.deps.FSM.ListFiles("") // ignore prefix filter for now
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error listing files: %v", err)
 	}
@@ -185,7 +186,7 @@ func (h *MetadataServiceHandler) CommitFile(ctx context.Context, req *pb.CommitF
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error creating commit command: %v", err)
 	}
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing commit command: %v", err)
 	}
 	return &pb.CommitFileResponse{Success: true}, nil

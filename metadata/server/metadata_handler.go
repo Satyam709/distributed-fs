@@ -16,42 +16,40 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type MetadataServiceHandler struct {
-	pb.UnimplementedMetadataServiceServer
-	raft              *raft.Raft
-	fsm               *fsm.MetadataFSM
-	repairer          *scheduler.RepairScheduler
-	nodeWatcher       *watcher.NodeWatcher
-	reconciler        *reconcile.Reconciler
-	mu                sync.Mutex
-	heartbeatsCount   map[string]int
-	placementStrategy placement.PlacementStrategy
-	replicationCount  int
-	logger            *logging.CLogger
+type HandlerDeps struct {
+	Raft              *raft.Raft
+	FSM               *fsm.MetadataFSM
+	Scheduler         *scheduler.RepairScheduler
+	Watcher           *watcher.NodeWatcher
+	Reconciler        *reconcile.Reconciler
+	TargetPlacement   placement.PlacementStrategy
+	Logger            *logging.CLogger
+	ReplicationFactor int
 }
 
-func NewMetadataServiceHandler(r *raft.Raft, f *fsm.MetadataFSM, re *scheduler.RepairScheduler, nw *watcher.NodeWatcher, rec *reconcile.Reconciler, ps placement.PlacementStrategy, rc int) *MetadataServiceHandler {
+type MetadataServiceHandler struct {
+	pb.UnimplementedMetadataServiceServer
+	deps *HandlerDeps
+
+	mu              sync.Mutex
+	heartbeatsCount map[string]int
+}
+
+func NewMetadataServiceHandler(deps *HandlerDeps) *MetadataServiceHandler {
 	return &MetadataServiceHandler{
-		raft:              r,
-		fsm:               f,
-		heartbeatsCount:   map[string]int{},
-		nodeWatcher:       nw,
-		repairer:          re,
-		reconciler:        rec,
-		placementStrategy: ps,
-		replicationCount:  rc,
-		logger:            logging.NewCLogger().With("component", "metadata-handler"),
+		deps:            deps,
+		heartbeatsCount: map[string]int{},
 	}
 }
 
 // isLeader checks if the current node is the leader of the Raft cluster.
 func (h *MetadataServiceHandler) isLeader() bool {
-	return raftutil.IsLeader(h.raft)
+	return raftutil.IsLeader(h.deps.Raft)
 }
 
 // TODO: lets see this first than will change this to interally redirect to leader
 func (h *MetadataServiceHandler) leaderRedirect() error {
-	addr := raftutil.LeaderAddress(h.raft)
+	addr := raftutil.LeaderAddress(h.deps.Raft)
 	if addr == "" {
 		return status.Error(codes.Unavailable, "no leader elected yet")
 	}

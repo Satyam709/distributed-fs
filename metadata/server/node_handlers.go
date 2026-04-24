@@ -31,13 +31,13 @@ func (h *MetadataServiceHandler) RegisterNode(ctx context.Context, req *pb.Regis
 		return nil, status.Errorf(codes.Internal, "error creating register command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing register command: %v", err)
 	}
 
 	// Schedule reconciliation after the configured delay. If the node
 	// re-registers before the delay expires the old timer is cancelled.
-	h.reconciler.Schedule(req.NodeId, req.ChunkIds)
+	h.deps.Reconciler.Schedule(req.NodeId, req.ChunkIds)
 
 	return &pb.RegisterNodeResponse{NodeId: req.NodeId}, nil
 }
@@ -47,7 +47,7 @@ func (h *MetadataServiceHandler) DeregisterNode(ctx context.Context, req *pb.Der
 		return nil, h.leaderRedirect()
 	}
 
-	_, err := h.fsm.GetNode(req.NodeId)
+	_, err := h.deps.FSM.GetNode(req.NodeId)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "node not found: %s", req.NodeId)
 	}
@@ -60,12 +60,12 @@ func (h *MetadataServiceHandler) DeregisterNode(ctx context.Context, req *pb.Der
 		return nil, status.Errorf(codes.Internal, "error creating deregister command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing deregister command: %v", err)
 	}
 
 	// Trigger repair for all chunks on this node immediately.
-	h.repairer.TriggerRepair(req.NodeId)
+	h.deps.Scheduler.TriggerRepair(req.NodeId)
 
 	return &pb.DeregisterNodeResponse{Success: true}, nil
 }
@@ -80,19 +80,19 @@ func (h *MetadataServiceHandler) Heartbeat(ctx context.Context, req *pb.Heartbea
 	count := h.heartbeatsCount[req.NodeId]
 	h.mu.Unlock()
 	// 1. NodeWatcher.UpdateLastSeen(nodeID, now) — in memory, not Raft
-	h.nodeWatcher.UpdateLastSeen(req.NodeId, time.Now())
+	h.deps.Watcher.UpdateLastSeen(req.NodeId, time.Now())
 	// 2. Every 10th heartbeat: propose CmdUpdateNodeSpace
 	if count%10 == 0 {
-		err := fsm.ProposeUpdateNodeSpace(h.raft, req.NodeId, uint64(req.FreeSpace), uint64(req.ChunkCount))
+		err := fsm.ProposeUpdateNodeSpace(h.deps.Raft, req.NodeId, uint64(req.FreeSpace), uint64(req.ChunkCount))
 		if err != nil {
-			h.logger.Warn("failed to update the free-space", "err", err.Error())
+			h.deps.Logger.Warn("failed to update the free-space", "err", err.Error())
 		}
 	}
 	// 3. Check RepairScheduler pending jobs for this node
-	pjobs := h.repairer.GetPendingJobsForNode(req.NodeId)
+	pjobs := h.deps.Scheduler.GetPendingJobsForNode(req.NodeId)
 
 	// 4. Return pending repair instructions
-	ins := buildRepairInstructions(h.fsm, pjobs, h.logger)
+	ins := buildRepairInstructions(h.deps.FSM, pjobs, h.deps.Logger)
 	return &pb.HeartbeatResponse{RepairJobs: ins}, nil
 }
 
