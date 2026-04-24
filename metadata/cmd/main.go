@@ -51,11 +51,21 @@ func main() {
 }
 
 func loadConfig() metadata.NodeConfig {
+	pwd, _ := os.Getwd()
+	configPath := getEnv("METADATA_CONFIG", filepath.Join(pwd, "metadata", "config"))
+	if configPath != "" {
+		cfg, err := metadata.LoadFromJSON(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load config from %s: %v\n", configPath, err)
+			os.Exit(1)
+		}
+		return *cfg
+	}
+
 	nodeID := getEnv("METADATA_NODE_ID", "node-1")
 	grpcAddr := getEnv("METADATA_GRPC_ADDR", ":4001")
 	raftAddr := getEnv("METADATA_RAFT_ADDR", "127.0.0.1:5001")
 
-	pwd, _ := os.Getwd()
 	raftDir := getEnv("METADATA_RAFT_DIR", filepath.Join(pwd, "data", "metadata", "raft"))
 
 	peerAddrs := parsePeerAddrs(getEnv("METADATA_PEER_ADDRS", ""))

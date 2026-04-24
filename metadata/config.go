@@ -2,7 +2,9 @@
 package metadata
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
 	"time"
 )
 
@@ -58,6 +60,77 @@ func (c *NodeConfig) Validate() error {
 		return errors.New("config: RaftDir is required")
 	}
 	return nil
+}
+
+func LoadFromJSON(path string) (*NodeConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw struct {
+		NodeID             string            `json:"node_id"`
+		GRPCAddr           string            `json:"grpc_addr"`
+		RaftAddr           string            `json:"raft_addr"`
+		RaftDir            string            `json:"raft_dir"`
+		PeerAddrs          map[string]string `json:"peer_addrs"`
+		Bootstrap          bool              `json:"bootstrap"`
+		ReplicationFactor  int               `json:"replication_factor"`
+		SuspectTimeout     any                `json:"suspect_timeout"`
+		DeadTimeout        any                `json:"dead_timeout"`
+		WatcherInterval    any                `json:"watcher_interval"`
+		ReconcileDelay     any                `json:"reconcile_delay"`
+		HeartbeatTimeout   any                `json:"heartbeat_timeout"`
+		ElectionTimeout    any                `json:"election_timeout"`
+		SnapshotInterval   any                `json:"snapshot_interval"`
+		SnapshotThreshold  uint64             `json:"snapshot_threshold"`
+		SnapshotRetain     int                `json:"snapshot_retain"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+
+	cfg := &NodeConfig{
+		NodeID:            raw.NodeID,
+		GRPCAddr:          raw.GRPCAddr,
+		RaftAddr:          raw.RaftAddr,
+		RaftDir:           raw.RaftDir,
+		PeerAddrs:         raw.PeerAddrs,
+		Bootstrap:         raw.Bootstrap,
+		ReplicationFactor: raw.ReplicationFactor,
+		SnapshotThreshold: raw.SnapshotThreshold,
+		SnapshotRetain:    raw.SnapshotRetain,
+	}
+
+	cfg.SuspectTimeout = parseDuration(raw.SuspectTimeout)
+	cfg.DeadTimeout = parseDuration(raw.DeadTimeout)
+	cfg.WatcherInterval = parseDuration(raw.WatcherInterval)
+	cfg.ReconcileDelay = parseDuration(raw.ReconcileDelay)
+	cfg.HeartbeatTimeout = parseDuration(raw.HeartbeatTimeout)
+	cfg.ElectionTimeout = parseDuration(raw.ElectionTimeout)
+	cfg.SnapshotInterval = parseDuration(raw.SnapshotInterval)
+
+	cfg.Default()
+	return cfg, nil
+}
+
+func parseDuration(v any) time.Duration {
+	if v == nil {
+		return 0
+	}
+	switch d := v.(type) {
+	case string:
+		if d == "" {
+			return 0
+		}
+		pd, _ := time.ParseDuration(d)
+		return pd
+	case float64:
+		return time.Duration(d)
+	default:
+		return 0
+	}
 }
 
 func (c *NodeConfig) Default() {
