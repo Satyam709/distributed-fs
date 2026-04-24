@@ -31,6 +31,10 @@ type RepairJob struct {
 	Target  string // address of replica to repair
 }
 
+type Replicator interface {
+	EnqueueRepair(job RepairJob) bool
+}
+
 // ReplicationManager fans out chunk data to replica nodes after a primary write
 // and drains a background repair queue populated by metadata heartbeat responses.
 type ReplicationManager struct {
