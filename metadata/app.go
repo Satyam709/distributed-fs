@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/internal/raftutil"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
@@ -24,13 +25,13 @@ import (
 type MetadataApp struct {
 	Config *NodeConfig
 
-	logger    *logging.CLogger
-	fsm       *fsm.MetadataFSM
-	raft      *raft.Raft
-	store     *raftboltdb.BoltStore
+	logger *logging.CLogger
+	fsm    *fsm.MetadataFSM
+	raft   *raft.Raft
+	store  *raftboltdb.BoltStore
 
-	watcher   *watcher.NodeWatcher
-	scheduler *scheduler.RepairScheduler
+	watcher    *watcher.NodeWatcher
+	scheduler  *scheduler.RepairScheduler
 	reconciler *reconcile.Reconciler
 
 	grpcServer *grpc.Server
@@ -180,7 +181,7 @@ func (a *MetadataApp) initWorkers() {
 func (a *MetadataApp) Run(ctx context.Context) error {
 	a.logger.Info("starting metadata app", "nodeID", a.Config.NodeID)
 
-	if err := raftutil.WaitForLeader(a.raft, 30); err != nil {
+	if err := raftutil.WaitForLeader(a.raft, 30*time.Second); err != nil {
 		return err
 	}
 

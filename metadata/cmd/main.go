@@ -52,7 +52,7 @@ func main() {
 func loadConfig() metadata.NodeConfig {
 	nodeID := getEnv("METADATA_NODE_ID", "node-1")
 	grpcAddr := getEnv("METADATA_GRPC_ADDR", ":4001")
-	raftAddr := getEnv("METADATA_RAFT_ADDR", ":5001")
+	raftAddr := getEnv("METADATA_RAFT_ADDR", "127.0.0.1:5001")
 
 	pwd, _ := os.Getwd()
 	raftDir := getEnv("METADATA_RAFT_DIR", filepath.Join(pwd, "data", "metadata", "raft"))
