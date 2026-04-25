@@ -45,24 +45,6 @@ func (f *failingSink) Close() error              { return nil }
 func (f *failingSink) Cancel() error             { f.cancelled = true; return nil }
 func (f *failingSink) ID() string                { return "failing-sink" }
 
-// shortWriteSink writes only the first byte of every write, simulating
-// a short write.
-type shortWriteSink struct {
-	buf       bytes.Buffer
-	cancelled bool
-}
-
-func (s *shortWriteSink) Write(p []byte) (int, error) {
-	if len(p) > 1 {
-		s.buf.Write(p[:1])
-		return 1, nil // report 1 written, but io.Copy will see mismatch
-	}
-	return s.buf.Write(p)
-}
-func (s *shortWriteSink) Close() error  { return nil }
-func (s *shortWriteSink) Cancel() error { s.cancelled = true; return nil }
-func (s *shortWriteSink) ID() string    { return "short-write-sink" }
-
 // seedFullFSM populates the FSM with representative data across all four
 // registries, giving us a realistic snapshot to round-trip.
 func seedFullFSM(t *testing.T, m *MetadataFSM) {
