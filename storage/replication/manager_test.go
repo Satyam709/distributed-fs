@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
+	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/replication"
 	"github.com/satyam709/distributed-fs/storage/store"
 	"github.com/stretchr/testify/assert"
@@ -83,7 +84,7 @@ func makeManager(t *testing.T) (*replication.ReplicationManager, store.Store) {
 	require.NoError(t, err)
 
 	dialer := replication.NewPeerDialer(grpc.WithTransportCredentials(insecure.NewCredentials()))
-	mgr := replication.NewReplicationManager(dialer, ds)
+	mgr := replication.NewReplicationManager(dialer, ds, &metaclient.MockMetaForNode{})
 	mgr.Start()
 	t.Cleanup(mgr.Stop)
 	t.Cleanup(dialer.CloseAll)
@@ -162,7 +163,7 @@ func TestReplicationManager_EnqueueRepair_NonBlocking(t *testing.T) {
 
 	// Create a manager but DON'T call Start() so workers don't drain the queue.
 	dialer := replication.NewPeerDialer(grpc.WithTransportCredentials(insecure.NewCredentials()))
-	mgr := replication.NewReplicationManager(dialer, ds)
+	mgr := replication.NewReplicationManager(dialer, ds, &metaclient.MockMetaForNode{})
 	// Don't start — we want to fill the queue.
 
 	// Fill 256 slots.

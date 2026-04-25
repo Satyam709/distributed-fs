@@ -14,17 +14,17 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// ReplicationServer implements the ReplicationServiceServer gRPC interface.
+// ReplicationServerHandler implements the ReplicationServiceServer gRPC interface.
 // It receives chunks from peer storage nodes via a bidirectional stream,
 // persisting them through the same ChunkWriter pipeline used by PutChunk.
-type ReplicationServer struct {
+type ReplicationServerHandler struct {
 	pb_storage.UnimplementedReplicationServiceServer
 	Store  store.Store
 	logger *logging.CLogger
 }
 
-// NewReplicationServer creates a ReplicationServer. Returns an error if s is nil.
-func NewReplicationServer(s store.Store, logger *logging.CLogger) (*ReplicationServer, error) {
+// NewReplicationServerHandler creates a ReplicationServer. Returns an error if s is nil.
+func NewReplicationServerHandler(s store.Store, logger *logging.CLogger) (*ReplicationServerHandler, error) {
 	if s == nil {
 		return nil, dfserrors.ErrInvalidChunkId
 	}
@@ -33,7 +33,7 @@ func NewReplicationServer(s store.Store, logger *logging.CLogger) (*ReplicationS
 		l = logger
 	}
 	l = l.With(slog.String("component", "ReplicationServer"))
-	return &ReplicationServer{Store: s, logger: l}, nil
+	return &ReplicationServerHandler{Store: s, logger: l}, nil
 }
 
 // ReplicateChunk implements the internal P2P chunk-transfer RPC.
@@ -47,7 +47,7 @@ func NewReplicationServer(s store.Store, logger *logging.CLogger) (*ReplicationS
 // Error codes:
 //   - InvalidArgument — first frame missing or ChunkId empty / mismatch.
 //   - Internal        — writer init, frame write, or finalise failure.
-func (s *ReplicationServer) ReplicateChunk(
+func (s *ReplicationServerHandler) ReplicateChunk(
 	stream grpc.BidiStreamingServer[pb_storage.ReplicateChunkRequest, pb_storage.ReplicateChunkResponse],
 ) error {
 	var writer *chunk.ChunkWriter

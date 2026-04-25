@@ -74,6 +74,14 @@ func (h *MetadataServiceHandler) Heartbeat(ctx context.Context, req *pb.Heartbea
 	if !h.isLeader() {
 		return nil, h.leaderRedirect()
 	}
+	// -1 see if the node even exists if not signal it to register first
+	_, err := h.deps.FSM.GetNode(req.NodeId)
+	if err != nil {
+		if err == fsm.ErrNodeNotFound {
+			return nil, status.Error(codes.NotFound, "node not registered")
+		}
+		return nil, status.Error(codes.Internal, "internal")
+	}
 	// 0. Count the heartbeat
 	h.mu.Lock()
 	h.heartbeatsCount[req.NodeId]++
