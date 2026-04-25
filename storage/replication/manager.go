@@ -48,8 +48,7 @@ type ReplicationManager struct {
 
 // NewReplicationManager creates a manager. Call Start() to launch repair workers.
 func NewReplicationManager(dialer *PeerDialer, s store.Store) *ReplicationManager {
-	l := logging.NewCLogger()
-	l.Logger = *l.With(slog.String("component", "ReplicationManager"))
+	l := logging.NewCLogger().With(slog.String("component", "ReplicationManager"))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ReplicationManager{

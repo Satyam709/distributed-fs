@@ -1,0 +1,189 @@
+syntax = "proto3";
+package proto.metadata.v1;
+
+// path for generated go-package
+option go_package = "github.com/satyam709/gen/pb_meta";
+
+service MetadataService {
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc CommitFile(CommitFileRequest) returns (CommitFileResponse);
+
+  rpc CommitChunk(CommitChunkRequest) returns (CommitChunkResponse);
+  rpc GetChunkLocations(GetChunkLocationsRequest) returns (GetChunkLocationsResponse);
+  rpc ReportCorruption(ReportCorruptionRequest) returns (ReportCorruptionResponse);
+
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  rpc DeregisterNode(DeregisterNodeRequest) returns (DeregisterNodeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  rpc ReportRepairResult(ReportRepairResultRequest) returns (ReportRepairResultResponse);
+}
+
+message CreateFileRequest {
+  string file_id = 1; // client provides this — uniqueness is client's responsibility
+  string file_name = 2;
+  int64 file_size = 3;
+  int64 chunk_size = 4;
+  repeated string chunk_ids = 5; // ordered list of chunk IDs
+}
+
+// returns placement map - where to write each chunk
+message CreateFileResponse {
+  string file_id = 1;
+  repeated ChunkPlacement placements = 2; // one per chunk
+}
+
+//ChunkPlacement in CreateFileResponse — returns both primary and replica
+// nodes so the client knows exactly where to write each chunk without a second RPC call
+
+message ChunkPlacement {
+  string chunk_id = 1;
+  NodeInfo primary = 2; // write here first
+  repeated NodeInfo replicas = 3; // replicate here after primary
+}
+
+message GetFileRequest {
+  string file_id = 1;
+}
+
+message GetFileResponse {
+  FileInfo file = 1;
+  repeated ChunkInfo chunks = 2; // ordered, index = chunk_index
+}
+
+message DeleteFileRequest {
+  string file_id = 1;
+}
+
+message DeleteFileResponse {
+  bool success = 1;
+}
+
+message CommitFileRequest {
+  string file_id = 1;
+  int64 file_size = 2; // final file size (in case of last chunk being smaller)
+  bytes checksum = 3; // checksum of the entire file for integrity verification
+}
+
+message CommitFileResponse {
+  bool success = 1;
+}
+
+message ListFilesRequest {
+  // string prefix = 1; // optional filter by file name prefix
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+}
+
+message CommitChunkRequest {
+  string chunk_id = 1;
+  string file_id = 2;
+  repeated string confirmed_nodes = 3; // nodes that successfully stored the chunk
+  bytes checksum = 4; // checksum of the chunk for integrity verification
+}
+
+message CommitChunkResponse {
+  bool success = 1;
+}
+
+message GetChunkLocationsRequest {
+  string chunk_id = 1;
+}
+
+message GetChunkLocationsResponse {
+  repeated NodeInfo nodes = 1; // nodes that have the chunk
+}
+
+message ReportCorruptionRequest {
+  string chunk_id = 1;
+  string reporter_id = 2; // node reporting the corruption
+}
+
+message ReportCorruptionResponse {
+  bool success = 1;
+}
+
+message RegisterNodeRequest {
+  string node_id = 1;
+  string address = 2; // e.g., "ip:port"
+  int64 free_space = 3;
+  repeated string chunk_ids = 4; // chunks currently stored on this node or // chunks node claims to have on startup
+}
+
+message RegisterNodeResponse {
+  string node_id = 1; // assigned node ID (could be same as request or generated)
+}
+
+message DeregisterNodeRequest {
+  string node_id = 1;
+}
+
+message DeregisterNodeResponse {
+  bool success = 1;
+}
+
+message HeartbeatRequest {
+  string node_id = 1;
+  int64 free_space = 2;
+  int32 chunk_count = 3;
+}
+
+// response may carry repair instructions piggybacked
+message HeartbeatResponse {
+  repeated RepairInstruction repair_jobs = 1; // empty if nothing to do
+}
+
+//HeartbeatResponse carries RepairInstruction — repair jobs are piggybacked on heartbeats,
+// exactly as the plan describes. Storage nodes don't need a separate "poll for work" RPC.
+message RepairInstruction {
+  string job_id = 1;
+  string chunk_id = 2;
+  string source_node_id = 3; // source node currently holding a healthy replica
+  string source_addr = 4;
+  string target_node_id = 5; // destination node that should receive the replica
+  string target_addr = 6;
+  bool delete_source = 7; // true when instruction is to delete local source replica
+}
+
+message ReportRepairResultRequest {
+  string job_id = 1;
+  bool job_succeed = 3;
+  string error = 2; // error in case job_succeed = false
+  string node_id = 4;
+}
+
+message ReportRepairResultResponse {
+  bool success = 1;
+}
+
+message FileInfo {
+  string file_id = 1;
+  string file_name = 2;
+  int64 file_size = 3;
+  int64 chunk_size = 4;
+  repeated string chunk_ids = 5; // ordered list of chunk IDs
+  string status = 6; // e.g., creating, complete , deleted
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message ChunkInfo {
+  string chunk_id = 1;
+  string file_id = 2;
+  int32 chunk_index = 3;
+  int64 size = 4;
+  bytes checksum = 5;
+  repeated string replicas = 6; // node IDs that have this chunk
+  string status = 7; // e.g., allocated, complete, lost
+}
+
+message NodeInfo {
+  string node_id = 1;
+  string address = 2;
+  int64 free_space = 3;
+}

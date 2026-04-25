@@ -7,11 +7,12 @@
 proto-gen: check-buf     # regenerate all pb.go files from protos
 	buf generate
 build-storage:   # build storage node binary
-	go build -o bin/storage ./storage/cmd/main.go
+	go build -o bin/storage ./storage/cmd
 build-metadata:  # build metadata node binary
+	go build -o bin/metadata ./metadata/cmd
 build-client:    # build client binary
-	go build -o bin/client ./client/cmd/main.go
-build-all: 	build-storage build-client       # all three
+	go build -o bin/client ./client/cmd
+build-all: 	build-storage build-client build-metadata      # all three
 test-storage:    # run storage package tests
 
 test-all:        # all tests
@@ -64,3 +65,12 @@ pb-lint: check-buf
 
 install-golangci-lint:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.3
+
+clean: 
+	@echo "Cleaning project directory..."
+# 	check root
+	@grep -q 'github.com/satyam709/distributed-fs' "go.mod" 2>/dev/null || { echo "go.mod not found: its not root aborting clean" ; exit 2; } 
+
+# remove files
+	rm -rf ./data/*
+	rm -rf ./manifests_logs

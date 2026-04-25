@@ -3,7 +3,7 @@
 *.out
 bin/**
 .env
-
+.idea/
 # Ignore build artifacts
 manifests_logs/
 
@@ -11,3 +11,4 @@ manifests_logs/
 test_output/
 test_files/
 /data
+/worktree
