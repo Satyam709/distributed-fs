@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
@@ -19,18 +19,26 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	// Resolve working directory.
-	pwd, err := os.Getwd()
-	if err != nil {
-		logger.FatalError("failed to get working directory", err)
+	cfg := storage.DefaultStorageNodeConfig()
+	cfg.GRPCAddr = ":4000"
+	cfg.MetadataAddr = ":3000"
+
+	if err := cfg.Validate(); err != nil {
+		logger.FatalError("invalid config", err)
 	}
-	rootDataDir := filepath.Join(pwd, "data")
+
+	nodeID := cfg.NodeID
+	if nodeID == "" {
+		nodeID = loadOrGenerateNodeID(cfg.DataDir, logger)
+		cfg.NodeID = nodeID
+	}
+
+	rootDataDir := cfg.DataDir
 	logger.Info("resolved data directories",
 		slog.String("rootDataDir", rootDataDir),
 		slog.String("tempDir", filepath.Join(rootDataDir, "tmp")),
 	)
 
-	// Open checksum index (BoltDB).
 	logger.Info("opening checksum index (BoltDB)")
 	boltDb, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
 		store.WithDbPath[[]byte](rootDataDir))
@@ -44,7 +52,6 @@ func main() {
 	}
 	logger.Info("checksum index opened")
 
-	// Create disk store.
 	logger.Info("creating disk store")
 	diskStore, err := store.NewDiskStore(
 		store.WithChecksumStore(boltDb),
@@ -57,14 +64,13 @@ func main() {
 	}
 	logger.Info("disk store ready", slog.String("rootDir", rootDataDir))
 
-	metaClient, err := metaclient.NewMetadataClient(":3000")
+	metaClient, err := metaclient.NewMetadataClient(cfg.MetadataAddr)
 	if err != nil {
 		logger.FatalError("failed to create metadata client", err)
 	}
-	logger.Info("metadata client ready")
+	logger.Info("metadata client ready", slog.String("metadataAddr", cfg.MetadataAddr))
 
-	config := storage.StorageNodeConfig{Port: ":4000", Timeout: 120 * time.Second, MetadataAddr: ":3000"}
-	node, err := storage.NewStorageNode(config, logger, diskStore, metaClient)
+	node, err := storage.NewStorageNode(*cfg, logger, diskStore, metaClient)
 	if err != nil {
 		logger.FatalError("failed to create storage node", err)
 	}
@@ -72,9 +78,11 @@ func main() {
 	if err := node.Start(); err != nil {
 		logger.FatalError("failed to start storage node", err)
 	}
-	logger.Info("storage node started", slog.String("port", config.Port))
+	logger.Info("storage node started",
+		slog.String("nodeID", cfg.NodeID),
+		slog.String("grpcAddr", cfg.GRPCAddr),
+	)
 
-	// Wait for shutdown signal and clean up.
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 
@@ -84,4 +92,25 @@ func main() {
 	node.Stop()
 	boltDb.CleanUp()
 	logger.Info("storage node shut down cleanly")
+}
+
+func loadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
+	nodeIDPath := filepath.Join(dataDir, "node_id")
+
+	data, err := os.ReadFile(nodeIDPath)
+	if err == nil && len(data) > 0 {
+		nodeID := string(data)
+		logger.Info("loaded existing node_id", slog.String("nodeID", nodeID))
+		return nodeID
+	}
+
+	nodeID := uuid.New().String()
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		logger.FatalError("failed to create data directory", err)
+	}
+	if err := os.WriteFile(nodeIDPath, []byte(nodeID), 0644); err != nil {
+		logger.FatalError("failed to write node_id file", err)
+	}
+	logger.Info("generated new node_id", slog.String("nodeID", nodeID))
+	return nodeID
 }

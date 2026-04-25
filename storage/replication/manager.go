@@ -109,8 +109,27 @@ func (m *ReplicationManager) EnqueueRepair(job RepairJob) bool {
 //     evaluates quorum (majority), returns error if quorum not met.
 //   - async=true: fires goroutines and returns immediately (fire-and-forget).
 func (m *ReplicationManager) ReplicateToNodes(ctx context.Context, chunkId string, targets []string, async bool) error {
+	_, err := m.ReplicateToNodesWithResult(ctx, chunkId, targets, async)
+	return err
+}
+
+// ReplicatorToNodes is the interface implementation that returns the list of
+// successfully replicated node addresses. Used by the storage handler to
+// determine which nodes confirmed the chunk for CommitChunk calls to metadata.
+func (m *ReplicationManager) ReplicatorToNodes(ctx context.Context, chunkId string, targets []string, async bool) ([]string, error) {
+	return m.ReplicateToNodesWithResult(ctx, chunkId, targets, async)
+}
+
+// ReplicateToNodesWithResult fans out chunkId to every address in targets concurrently
+// and returns the list of successfully replicated node addresses. This is used when
+// the caller needs to know which replicas succeeded (e.g., for CommitChunk).
+//
+//   - async=false: blocks until all goroutines finish (or fanoutTimeout elapses),
+//     evaluates quorum (majority), returns successful nodes and error if quorum not met.
+//   - async=true: fires goroutines and returns immediately (fire-and-forget).
+func (m *ReplicationManager) ReplicateToNodesWithResult(ctx context.Context, chunkId string, targets []string, async bool) ([]string, error) {
 	if len(targets) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	type result struct {
@@ -130,15 +149,15 @@ func (m *ReplicationManager) ReplicateToNodes(ctx context.Context, chunkId strin
 	}
 
 	if async {
-		return nil
+		return nil, nil
 	}
 
-	// Collect with timeout.
 	timer := time.NewTimer(fanoutTimeout)
 	defer timer.Stop()
 
 	var successCount int
 	var errs []error
+	var successfulNodes []string
 	for range len(targets) {
 		select {
 		case r := <-results:
@@ -154,22 +173,23 @@ func (m *ReplicationManager) ReplicateToNodes(ctx context.Context, chunkId strin
 					slog.String("chunkId", chunkId),
 					slog.String("target", r.addr),
 				)
+				successfulNodes = append(successfulNodes, r.addr)
 				successCount++
 			}
 		case <-timer.C:
-			return fmt.Errorf("replication fan-out timed out after %s: %d/%d succeeded",
+			return successfulNodes, fmt.Errorf("replication fan-out timed out after %s: %d/%d succeeded",
 				fanoutTimeout, successCount, len(targets))
 		case <-ctx.Done():
-			return ctx.Err()
+			return successfulNodes, ctx.Err()
 		}
 	}
 
 	quorum := len(targets)/2 + 1
 	if successCount < quorum {
-		return fmt.Errorf("replication quorum not met: %d/%d succeeded (need %d): %w",
+		return successfulNodes, fmt.Errorf("replication quorum not met: %d/%d succeeded (need %d): %w",
 			successCount, len(targets), quorum, errors.Join(errs...))
 	}
-	return nil
+	return successfulNodes, nil
 }
 
 // replicateToSingleNode opens a ReplicateChunk bidi stream to address and

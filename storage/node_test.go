@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeNode(t *testing.T, port string) *StorageNode {
+func makeNode(t *testing.T, addr string) *StorageNode {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -32,7 +32,7 @@ func makeNode(t *testing.T, port string) *StorageNode {
 	require.NoError(t, err)
 
 	node, err := NewStorageNode(
-		StorageNodeConfig{Port: port, Timeout: 5 * time.Second},
+		StorageNodeConfig{GRPCAddr: addr, Timeout: 5 * time.Second, NodeID: "test-node-1", MetadataAddr: ":3000", DataDir: dir, ReplicationFactor: 3, HeartbeatInterval: 3 * time.Second},
 		logging.NewCLogger(),
 		ds,
 		&metaclient.MockMetaForNode{},

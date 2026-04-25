@@ -48,7 +48,7 @@ func newTestServer(t *testing.T) (pb_storage.StorageServiceClient, store.Store) 
 
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
-	ss, err := NewStorageServerHandler(ds, nil)
+	ss, err := NewStorageServerHandler(ds, nil, nil, "test-node")
 	require.NoError(t, err)
 	pb_storage.RegisterStorageServiceServer(srv, ss)
 
@@ -504,7 +504,7 @@ func TestVerifyChunk_EmptyChunkId(t *testing.T) {
 
 // TestNewStorageServer_NilStore verifies that passing a nil store returns an error.
 func TestNewStorageServer_NilStore(t *testing.T) {
-	_, err := NewStorageServerHandler(nil, nil)
+	_, err := NewStorageServerHandler(nil, nil, nil, "test-node")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Store must not be nil")
 }
@@ -527,6 +527,13 @@ func (f *fakeReplicator) ReplicateToNodes(_ context.Context, chunkId string, tar
 	f.calledWith.chunkId = chunkId
 	f.calledWith.targets = append([]string(nil), targets...)
 	return nil
+}
+
+func (f *fakeReplicator) ReplicatorToNodes(_ context.Context, chunkId string, targets []string, _ bool) ([]string, error) {
+	f.callCount++
+	f.calledWith.chunkId = chunkId
+	f.calledWith.targets = append([]string(nil), targets...)
+	return targets, nil
 }
 
 // newTestServerWithReplicator builds an in-process server with an injected replicator.
@@ -552,7 +559,7 @@ func newTestServerWithReplicator(t *testing.T, r Replicator) pb_storage.StorageS
 
 	lis := bufconn.Listen(bufSize)
 	srv := grpc.NewServer()
-	ss, err := NewStorageServerHandler(ds, nil, r)
+	ss, err := NewStorageServerHandler(ds, nil, nil, "test-node", r)
 	require.NoError(t, err)
 	pb_storage.RegisterStorageServiceServer(srv, ss)
 	go func() { _ = srv.Serve(lis) }()

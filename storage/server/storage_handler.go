@@ -6,7 +6,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"time"
 
+	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	dfserrors "github.com/satyam709/distributed-fs/internal/errors"
 	"github.com/satyam709/distributed-fs/internal/logging"
@@ -20,20 +22,28 @@ import (
 // Replicator is the interface that ReplicationManager satisfies.
 // StorageServer calls it after a successful chunk finalise.
 type Replicator interface {
-	ReplicateToNodes(ctx context.Context, chunkId string, targets []string, async bool) error
+	ReplicatorToNodes(ctx context.Context, chunkId string, targets []string, async bool) ([]string, error)
+}
+
+// MetadataCommitter is the interface for communicating with the metadata node.
+// Used to commit chunk information after successful storage and replication.
+type MetadataCommitter interface {
+	CommitChunk(ctx context.Context, in *pb_meta.CommitChunkRequest, opts ...grpc.CallOption) (*pb_meta.CommitChunkResponse, error)
 }
 
 // StorageServerHandler implements the StorageServiceServer gRPC interface.
 type StorageServerHandler struct {
 	pb_storage.UnimplementedStorageServiceServer
-	Store      store.Store
-	Replicator Replicator // optional; nil means no fan-out
+	Store       store.Store
+	Replicator  Replicator
+	MetaClient  MetadataCommitter
+	NodeID      string
 	logger     *logging.CLogger
 }
 
 // NewStorageServerHandler creates a StorageServer with a component-scoped logger.
-// Returns an error if s is nil. r is optional (nil = no replication fan-out).
-func NewStorageServerHandler(s store.Store, logger *logging.CLogger, r ...Replicator) (*StorageServerHandler, error) {
+// Returns an error if s is nil.
+func NewStorageServerHandler(s store.Store, logger *logging.CLogger, metaClient MetadataCommitter, nodeID string, r ...Replicator) (*StorageServerHandler, error) {
 	if s == nil {
 		return nil, errors.New("StorageServer: Store must not be nil")
 	}
@@ -46,7 +56,7 @@ func NewStorageServerHandler(s store.Store, logger *logging.CLogger, r ...Replic
 	if len(r) > 0 {
 		repl = r[0]
 	}
-	return &StorageServerHandler{Store: s, Replicator: repl, logger: l}, nil
+	return &StorageServerHandler{Store: s, Replicator: repl, MetaClient: metaClient, NodeID: nodeID, logger: l}, nil
 }
 
 // PutChunk receives a client-streaming RPC that delivers chunk data in
@@ -106,21 +116,41 @@ func (s *StorageServerHandler) PutChunk(stream grpc.ClientStreamingServer[pb_sto
 
 			s.logger.Info("PutChunk: chunk stored", slog.String("chunkId", lastFrame.ChunkId))
 
-			// Fan out to replica nodes if targets were specified on the first frame.
+			confirmedNodes := []string{s.NodeID}
+
 			if s.Replicator != nil && len(replicateTo) > 0 {
 				s.logger.Info("PutChunk: triggering replication",
 					slog.String("chunkId", lastFrame.ChunkId),
 					slog.Int("targets", len(replicateTo)),
 				)
-				if replErr := s.Replicator.ReplicateToNodes(
+				successfulReplicas, replErr := s.Replicator.ReplicatorToNodes(
 					stream.Context(), lastFrame.ChunkId, replicateTo, false,
-				); replErr != nil {
+				)
+				if replErr != nil {
 					s.logger.Info("PutChunk: replication failed (partial)",
 						slog.String("chunkId", lastFrame.ChunkId),
 						slog.String("error", replErr.Error()),
 					)
-					// Per design: partial failure is logged but not surfaced as
-					// an RPC error to the client — the repair scheduler fills gaps.
+				}
+				confirmedNodes = append(confirmedNodes, successfulReplicas...)
+			}
+
+			if s.MetaClient != nil {
+				ctx, cancel := context.WithTimeout(stream.Context(), 10*time.Second)
+				defer cancel()
+				_, err := s.MetaClient.CommitChunk(ctx, &pb_meta.CommitChunkRequest{
+					ChunkId:        lastFrame.ChunkId,
+					ConfirmedNodes: confirmedNodes,
+					Checksum:        []byte(lastFrame.Checksum),
+				})
+				if err != nil {
+					s.logger.Warn("PutChunk: failed to commit chunk to metadata",
+						slog.String("chunkId", lastFrame.ChunkId),
+						slog.String("err", err.Error()))
+				} else {
+					s.logger.Info("PutChunk: chunk committed to metadata",
+						slog.String("chunkId", lastFrame.ChunkId),
+						slog.Int("confirmedNodes", len(confirmedNodes)))
 				}
 			}
 
