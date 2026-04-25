@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -19,9 +20,7 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	cfg := storage.DefaultStorageNodeConfig()
-	cfg.GRPCAddr = ":4000"
-	cfg.MetadataAddr = ":3000"
+	cfg := loadConfig()
 
 	if err := cfg.Validate(); err != nil {
 		logger.FatalError("invalid config", err)
@@ -94,6 +93,22 @@ func main() {
 	logger.Info("storage node shut down cleanly")
 }
 
+func loadConfig() *storage.StorageNodeConfig {
+	cfg := storage.DefaultStorageNodeConfig()
+
+	configPath := getEnv("STORAGE_CONFIG", "")
+	if configPath != "" {
+		if err := cfg.ApplyJSON(configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to load config from %s: %v\n", configPath, err)
+			os.Exit(1)
+		}
+	}
+
+	cfg.ApplyEnv()
+	cfg.Default()
+	return cfg
+}
+
 func loadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
 	nodeIDPath := filepath.Join(dataDir, "node_id")
 
@@ -113,4 +128,11 @@ func loadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
 	}
 	logger.Info("generated new node_id", slog.String("nodeID", nodeID))
 	return nodeID
+}
+
+func getEnv(key, defaultValue string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultValue
 }
