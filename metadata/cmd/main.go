@@ -21,6 +21,10 @@ func main() {
 	logger.Info("distributed-fs metadata node starting")
 
 	cfg := loadConfig()
+	err := cfg.Validate()
+	if err != nil {
+		logger.FatalError("failed to validate config: ", err)
+	}
 
 	app, err := metadata.NewMetadataApp(cfg)
 	if err != nil {
@@ -52,7 +56,7 @@ func main() {
 
 func loadConfig() metadata.NodeConfig {
 	pwd, _ := os.Getwd()
-	configPath := getEnv("METADATA_CONFIG", filepath.Join(pwd, "metadata", "config"))
+	configPath := getEnv("METADATA_CONFIG", "")
 	if configPath != "" {
 		cfg, err := metadata.LoadFromJSON(configPath)
 		if err != nil {
@@ -92,6 +96,8 @@ func loadConfig() metadata.NodeConfig {
 	cfg.SnapshotThreshold = uint64(getEnvInt("METADATA_SNAPSHOT_THRESHOLD", 8192))
 	cfg.SnapshotRetain = getEnvInt("METADATA_SNAPSHOT_RETAIN", 2)
 
+	// try to get defaults if something absent
+	cfg.Default()
 	return cfg
 }
 
