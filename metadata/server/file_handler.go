@@ -15,11 +15,46 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, h.leaderRedirect()
 	}
 	// check duplicate filename
-	_, err := h.fsm.GetFile(req.FileId)
+	_, err := h.deps.FSM.GetFile(req.FileId)
 	if err == nil {
 		return nil, status.Errorf(codes.AlreadyExists, "file with ID '%s' already exists", req.FileId)
 	}
 
+	// get the placements for chunks of file
+	var aliveNodes []fsm.NodeEntry
+	if aliveNodes, err = h.deps.FSM.GetLiveNodes(); err != nil {
+		return nil, status.Errorf(codes.Internal, "error getting live nodes: %v", err)
+	}
+	var chPlacements []*pb.ChunkPlacement
+	rf := h.deps.ReplicationFactor
+	for _, v := range req.ChunkIds {
+		outNodes, err := h.deps.TargetPlacement.SelectNodes(aliveNodes, v, rf)
+		if err != nil || len(outNodes) == 0 {
+			return nil, status.Errorf(codes.Internal, "error getting placement for chunk %s: %v", v, err)
+		}
+
+		transform := func(nodes ...fsm.NodeEntry) []*pb.NodeInfo {
+			out := []*pb.NodeInfo{}
+			for _, v := range nodes {
+				out = append(out, &pb.NodeInfo{
+					NodeId:    v.NodeID,
+					Address:   v.Address,
+					FreeSpace: int64(v.FreeSpace),
+				})
+			}
+			return out
+		}
+
+		out := transform(outNodes...)
+
+		chPlacements = append(chPlacements, &pb.ChunkPlacement{
+			ChunkId:  v,
+			Primary:  out[0],
+			Replicas: out[1:],
+		})
+	}
+
+	// chunks placement done -> create file
 	cmd, err := newCommand(fsm.CmdCreateFile, fsm.CommandCreateFile{
 		FileID:    req.FileId,
 		FileName:  req.FileName,
@@ -31,11 +66,13 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, status.Errorf(codes.Internal, "error creating command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing command: %v", err)
 	}
 
-	return &pb.CreateFileResponse{FileId: req.FileId}, nil
+	// TODO: should there be a dedicated handler to give the placement options for a chunk
+	// currently chunk replica in fsm is populated by storage nodes at CommitChunk
+	return &pb.CreateFileResponse{FileId: req.FileId, Placements: chPlacements}, nil
 }
 
 func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileRequest) (*pb.GetFileResponse, error) {
@@ -46,12 +83,12 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 	// direct fsm read - no raft involvement since this is a
 	// read-only operation on the leader's state machine
 
-	file, err := h.fsm.GetFile(req.FileId)
+	file, err := h.deps.FSM.GetFile(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
 	// get all chunks for this file in order
-	chunks, err := h.fsm.GetFileChunks(req.FileId)
+	chunks, err := h.deps.FSM.GetFileChunks(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error fetching file chunks: %v", err)
 	}
@@ -60,23 +97,13 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 	pbChunks := make([]*pb.ChunkInfo, 0, len(chunks))
 
 	for _, ck := range chunks {
-		locations, err := h.fsm.GetChunkLocations(ck.ChunkID)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "error fetching chunk locations: %v", err)
-		}
-		// collect node IDs of live replicas
-		nodeIDs := make([]string, 0, len(locations))
-		for _, n := range locations {
-			nodeIDs = append(nodeIDs, n.NodeID)
-		}
-
 		pbChunks = append(pbChunks, &pb.ChunkInfo{
 			ChunkId:    ck.ChunkID,
 			FileId:     ck.FileID,
 			ChunkIndex: int32(ck.ChunkIndex),
 			Size:       ck.Size,
 			Checksum:   ck.Checksum,
-			Replicas:   nodeIDs,
+			Replicas:   ck.Replicas,
 			Status:     string(ck.Status),
 		})
 	}
@@ -101,7 +128,7 @@ func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteF
 		return nil, h.leaderRedirect()
 	}
 	// verofy file exosts before proposing - fall fast with clear error
-	_, err := h.fsm.GetFile(req.FileId)
+	_, err := h.deps.FSM.GetFile(req.FileId)
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
@@ -114,7 +141,7 @@ func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteF
 		return nil, status.Errorf(codes.Internal, "error creating delete command: %v", err)
 	}
 
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing delete command: %v", err)
 	}
 	return &pb.DeleteFileResponse{Success: true}, nil
@@ -126,7 +153,7 @@ func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFile
 	}
 	// direct fsm read - rsults already sorted by fileName
 	// files, err := h.fsm.ListFiles(req.Prefix)
-	files, err := h.fsm.ListFiles("") // ignore prefix filter for now
+	files, err := h.deps.FSM.ListFiles("") // ignore prefix filter for now
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error listing files: %v", err)
 	}
@@ -159,7 +186,7 @@ func (h *MetadataServiceHandler) CommitFile(ctx context.Context, req *pb.CommitF
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "error creating commit command: %v", err)
 	}
-	if err := fsm.Propose(h.raft, cmd); err != nil {
+	if err := fsm.Propose(h.deps.Raft, cmd); err != nil {
 		return nil, status.Errorf(codes.Internal, "error proposing commit command: %v", err)
 	}
 	return &pb.CommitFileResponse{Success: true}, nil

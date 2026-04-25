@@ -12,18 +12,18 @@ func (h *MetadataServiceHandler) ReportRepairResult(ctx context.Context, req *pb
 		return nil, h.leaderRedirect()
 	}
 	if req.JobSucceed {
-		err := h.fsm.UpdateRepairJobStatus(h.raft, req.JobId, fsm.RepairStatusDone)
+		err := h.deps.FSM.UpdateRepairJobStatus(h.deps.Raft, req.JobId, fsm.RepairStatusDone)
 		if err != nil {
 			return &pb.ReportRepairResultResponse{Success: false}, err
 		}
 	} else {
-		err := h.fsm.UpdateRepairJobStatus(h.raft, req.JobId, fsm.RepairStatusFailed)
+		err := h.deps.FSM.UpdateRepairJobStatus(h.deps.Raft, req.JobId, fsm.RepairStatusFailed)
 		if err != nil {
 			return &pb.ReportRepairResultResponse{Success: false}, err
 		}
 	}
 
-	err := h.repairer.OnJobComplete(req.NodeId, req.JobId, req.JobSucceed, req.Error)
+	err := h.deps.Scheduler.OnJobComplete(req.NodeId, req.JobId, req.JobSucceed, req.Error)
 	if err != nil {
 		return &pb.ReportRepairResultResponse{Success: false}, err
 	}

@@ -130,7 +130,7 @@ func TestReconcileNode_NoDiscrepancy(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-2"})
 
 	assert.Empty(t, storage.calls)
@@ -148,7 +148,8 @@ func TestReconcileNode_StaleReplica(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
 	// node-a reports chunk-99 which FSM does not know about.
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-2", "chunk-99"})
 
@@ -166,7 +167,7 @@ func TestReconcileNode_MissingReplica_UnderReplicated(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
 	// node-a reports only chunk-1; chunk-2 is missing.
 	// After evicting node-a from chunk-2, only node-b and node-c remain
 	// => 2 live replicas < RF(3) => repair should be scheduled.
@@ -192,7 +193,7 @@ func TestReconcileNode_MissingReplica_StillReplicated(t *testing.T) {
 	storage := &testStorageClient{}
 
 	// Change RF to 2 so that after eviction we are still adequately replicated.
-	r := NewReconciler(m, proposer, repairer, storage, 0, 2, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 2)
 	r.ReconcileNode("node-a", []string{"chunk-1"})
 
 	// No repair because 2 remaining replicas == RF.
@@ -210,7 +211,9 @@ func TestReconcileNode_Mixed(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	// node-a has stale chunk-99 and is missing chunk-2.
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-99"})
 
@@ -227,7 +230,9 @@ func TestReconcileNode_NodeNotFound(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	r.ReconcileNode("ghost-node", []string{"chunk-1"})
 
 	assert.Empty(t, storage.calls)
@@ -240,7 +245,9 @@ func TestReconcileNode_DeleteChunkFailure(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{failNext: true, failErr: errors.New("conn refused")}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-2", "chunk-99"})
 
 	// DeleteChunk was attempted and failed.
@@ -258,7 +265,9 @@ func TestReconcileNode_MultipleStaleChunks(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-2", "chunk-x", "chunk-y"})
 
 	require.Len(t, storage.calls, 2)
@@ -272,7 +281,9 @@ func TestSchedule_CancelsOldTimer(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	r.reconcileDelay = 50 * time.Millisecond
 
 	r.Schedule("node-a", []string{"chunk-1"})
@@ -299,7 +310,9 @@ func TestCancel_StopsTimer(t *testing.T) {
 	repairer := &testRepairer{}
 	storage := &testStorageClient{}
 
-	r := NewReconciler(m, proposer, repairer, storage, 0, 3, logging.NewCLogger())
+	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
+
 	r.Schedule("node-a", []string{"chunk-1"})
 	r.Cancel("node-a")
 

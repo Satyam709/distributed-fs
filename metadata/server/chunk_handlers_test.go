@@ -66,13 +66,21 @@ func TestGetChunkLocations_ChunkNotFound(t *testing.T) {
 // Test that the handler constructor accepts the reconciler without panic.
 func TestNewMetadataServiceHandler_WithReconciler(t *testing.T) {
 	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
-	rec := reconcile.NewReconciler(m, nil, nil, nil, 0, 3, logging.NewCLogger())
+	rec, err := reconcile.NewReconciler(m, nil, nil, nil, 0, 3)
+	require.NoError(t, err)
+
 	// Use a real RepairScheduler with a no-op proposer so the type matches.
 	rs := scheduler.NewRepairScheduler(nil, m, nil, nil, 3)
-	nw := watcher.NewNodeWatcher(m, nil, nil, 0, 0, logging.NewCLogger())
+	nw := watcher.NewNodeWatcher(m, nil, nil, 0, 0)
 
+	deps := &HandlerDeps{
+		FSM:               m,
+		Scheduler:         rs,
+		Watcher:           nw,
+		Reconciler:        rec,
+		ReplicationFactor: 3,
+	}
 	// This will panic if the constructor signature is wrong.
-	h := NewMetadataServiceHandler(nil, m, rs, nw, rec)
+	h := NewMetadataServiceHandler(deps)
 	require.NotNil(t, h)
-	assert.NotNil(t, h.reconciler)
 }

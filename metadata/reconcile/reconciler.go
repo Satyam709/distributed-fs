@@ -68,13 +68,9 @@ func NewReconciler(
 	storageClient StorageClient,
 	delay time.Duration,
 	rf int,
-	logger *logging.CLogger,
-) *Reconciler {
-	if logger == nil {
-		logger = logging.NewCLogger()
-	}
+) (*Reconciler, error) {
 	if rf <= 0 {
-		rf = 3
+		return nil, errors.New("NewReconciler: replication factor invalid")
 	}
 	return &Reconciler{
 		fsm:               fsm,
@@ -83,9 +79,9 @@ func NewReconciler(
 		storageClient:     storageClient,
 		reconcileDelay:    delay,
 		replicationFactor: rf,
-		logger:            logger.With(slog.String("component", "Reconciler")),
+		logger:            logging.NewCLogger().With(slog.String("component", "Reconciler")),
 		timers:            make(map[string]*time.Timer),
-	}
+	}, nil
 }
 
 // Schedule starts a delayed reconciliation for the given node. If a timer
