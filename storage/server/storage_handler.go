@@ -34,10 +34,10 @@ type MetadataCommitter interface {
 // StorageServerHandler implements the StorageServiceServer gRPC interface.
 type StorageServerHandler struct {
 	pb_storage.UnimplementedStorageServiceServer
-	Store       store.Store
-	Replicator  Replicator
-	MetaClient  MetadataCommitter
-	NodeID      string
+	Store      store.Store
+	Replicator Replicator
+	MetaClient MetadataCommitter
+	NodeID     string
 	logger     *logging.CLogger
 }
 
@@ -141,7 +141,7 @@ func (s *StorageServerHandler) PutChunk(stream grpc.ClientStreamingServer[pb_sto
 				_, err := s.MetaClient.CommitChunk(ctx, &pb_meta.CommitChunkRequest{
 					ChunkId:        lastFrame.ChunkId,
 					ConfirmedNodes: confirmedNodes,
-					Checksum:        []byte(lastFrame.Checksum),
+					Checksum:       []byte(lastFrame.Checksum),
 				})
 				if err != nil {
 					s.logger.Warn("PutChunk: failed to commit chunk to metadata",

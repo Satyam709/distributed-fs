@@ -169,10 +169,10 @@ func (s *StorageNode) registerWithMetadata(ctx context.Context) error {
 		slog.Int("chunkCount", len(chunkIDs)))
 
 	resp, err := s.metaClient.RegisterNode(ctx, &pb_meta.RegisterNodeRequest{
-		NodeId:     s.config.NodeID,
-		Address:    s.config.GRPCAddr,
-		FreeSpace:  int64(s.GetFreeSpace()),
-		ChunkIds:   chunkIDs,
+		NodeId:    s.config.NodeID,
+		Address:   s.config.GRPCAddr,
+		FreeSpace: int64(s.GetFreeSpace()),
+		ChunkIds:  chunkIDs,
 	})
 	if err != nil {
 		return err

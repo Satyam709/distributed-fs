@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/replication"
+	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 )
 

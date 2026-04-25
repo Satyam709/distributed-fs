@@ -11,7 +11,7 @@ type StorageNodeConfig struct {
 	GRPCAddr     string `json:"grpc_addr"`
 	MetadataAddr string `json:"metadata_addr"`
 
-	Timeout          time.Duration `json:"timeout"`
+	Timeout           time.Duration `json:"timeout"`
 	HeartbeatInterval time.Duration `json:"heartbeat_interval"`
 
 	DataDir string `json:"data_dir"`
