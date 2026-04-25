@@ -183,7 +183,10 @@ func (s *StorageNode) Stop() {
 	}
 
 	if s.registerer != nil {
-		s.registerer.DeregisterFromMetadata(ctx)
+		if err := s.registerer.DeregisterFromMetadata(ctx); err != nil {
+			s.logger.Warn("StorageNode: failed to deregister from metadata",
+				slog.String("err", err.Error()))
+		}
 	}
 
 	s.grpcServer.GracefulStop()

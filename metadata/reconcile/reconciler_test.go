@@ -131,6 +131,7 @@ func TestReconcileNode_NoDiscrepancy(t *testing.T) {
 	storage := &testStorageClient{}
 
 	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
 	r.ReconcileNode("node-a", []string{"chunk-1", "chunk-2"})
 
 	assert.Empty(t, storage.calls)
@@ -168,6 +169,7 @@ func TestReconcileNode_MissingReplica_UnderReplicated(t *testing.T) {
 	storage := &testStorageClient{}
 
 	r, err := NewReconciler(m, proposer, repairer, storage, 0, 3)
+	require.NoError(t, err)
 	// node-a reports only chunk-1; chunk-2 is missing.
 	// After evicting node-a from chunk-2, only node-b and node-c remain
 	// => 2 live replicas < RF(3) => repair should be scheduled.
@@ -194,6 +196,7 @@ func TestReconcileNode_MissingReplica_StillReplicated(t *testing.T) {
 
 	// Change RF to 2 so that after eviction we are still adequately replicated.
 	r, err := NewReconciler(m, proposer, repairer, storage, 0, 2)
+	require.NoError(t, err)
 	r.ReconcileNode("node-a", []string{"chunk-1"})
 
 	// No repair because 2 remaining replicas == RF.

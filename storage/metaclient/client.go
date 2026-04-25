@@ -2,7 +2,7 @@ package metaclient
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"google.golang.org/grpc"
@@ -25,7 +25,7 @@ type StorageMetadataClient struct {
 func NewMetadataClient(addr string) (*StorageMetadataClient, error) {
 	grpcClient, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, errors.Join(errors.New("NewmetadataClient:"), err)
+		return nil, fmt.Errorf("new metadata client: %w", err)
 	}
 	return &StorageMetadataClient{
 		pb_meta.NewMetadataServiceClient(grpcClient),

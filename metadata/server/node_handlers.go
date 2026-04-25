@@ -88,7 +88,9 @@ func (h *MetadataServiceHandler) Heartbeat(ctx context.Context, req *pb.Heartbea
 	count := h.heartbeatsCount[req.NodeId]
 	h.mu.Unlock()
 	// 1. NodeWatcher.UpdateLastSeen(nodeID, now) — in memory, not Raft
-	h.deps.Watcher.UpdateLastSeen(req.NodeId, time.Now())
+	if err := h.deps.Watcher.UpdateLastSeen(req.NodeId, time.Now()); err != nil {
+		h.deps.Logger.Warn("failed to update node last seen", "nodeID", req.NodeId, "err", err.Error())
+	}
 	// 2. Every 10th heartbeat: propose CmdUpdateNodeSpace
 	if count%10 == 0 {
 		err := fsm.ProposeUpdateNodeSpace(h.deps.Raft, req.NodeId, uint64(req.FreeSpace), uint64(req.ChunkCount))

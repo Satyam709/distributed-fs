@@ -308,20 +308,32 @@ func (m *ReplicationManager) worker(id int) {
 					slog.String("target", job.Target),
 					slog.String("error", err.Error()),
 				)
-				m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
+				if _, reportErr := m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
 					JobId:      job.JobID,
 					JobSucceed: false,
 					Error:      err.Error(),
-				})
+				}); reportErr != nil {
+					m.logger.Warn("repair worker: failed to report failed repair",
+						slog.String("jobId", job.JobID),
+						slog.String("chunkId", job.ChunkID),
+						slog.String("error", reportErr.Error()),
+					)
+				}
 			} else {
 				m.logger.Info("repair worker: job succeeded",
 					slog.Int("worker", id),
 					slog.String("chunkId", job.ChunkID),
 				)
-				m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
+				if _, reportErr := m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
 					JobId:      job.JobID,
 					JobSucceed: true,
-				})
+				}); reportErr != nil {
+					m.logger.Warn("repair worker: failed to report successful repair",
+						slog.String("jobId", job.JobID),
+						slog.String("chunkId", job.ChunkID),
+						slog.String("error", reportErr.Error()),
+					)
+				}
 			}
 		}
 	}
