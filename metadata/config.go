@@ -69,22 +69,22 @@ func LoadFromJSON(path string) (*NodeConfig, error) {
 	}
 
 	var raw struct {
-		NodeID             string            `json:"node_id"`
-		GRPCAddr           string            `json:"grpc_addr"`
-		RaftAddr           string            `json:"raft_addr"`
-		RaftDir            string            `json:"raft_dir"`
-		PeerAddrs          map[string]string `json:"peer_addrs"`
-		Bootstrap          bool              `json:"bootstrap"`
-		ReplicationFactor  int               `json:"replication_factor"`
-		SuspectTimeout     any                `json:"suspect_timeout"`
-		DeadTimeout        any                `json:"dead_timeout"`
-		WatcherInterval    any                `json:"watcher_interval"`
-		ReconcileDelay     any                `json:"reconcile_delay"`
-		HeartbeatTimeout   any                `json:"heartbeat_timeout"`
-		ElectionTimeout    any                `json:"election_timeout"`
-		SnapshotInterval   any                `json:"snapshot_interval"`
-		SnapshotThreshold  uint64             `json:"snapshot_threshold"`
-		SnapshotRetain     int                `json:"snapshot_retain"`
+		NodeID            string            `json:"node_id"`
+		GRPCAddr          string            `json:"grpc_addr"`
+		RaftAddr          string            `json:"raft_addr"`
+		RaftDir           string            `json:"raft_dir"`
+		PeerAddrs         map[string]string `json:"peer_addrs"`
+		Bootstrap         bool              `json:"bootstrap"`
+		ReplicationFactor int               `json:"replication_factor"`
+		SuspectTimeout    any               `json:"suspect_timeout"`
+		DeadTimeout       any               `json:"dead_timeout"`
+		WatcherInterval   any               `json:"watcher_interval"`
+		ReconcileDelay    any               `json:"reconcile_delay"`
+		HeartbeatTimeout  any               `json:"heartbeat_timeout"`
+		ElectionTimeout   any               `json:"election_timeout"`
+		SnapshotInterval  any               `json:"snapshot_interval"`
+		SnapshotThreshold uint64            `json:"snapshot_threshold"`
+		SnapshotRetain    int               `json:"snapshot_retain"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {

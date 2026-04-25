@@ -7,18 +7,17 @@ import (
 	"net"
 	"time"
 
-	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"github.com/satyam709/distributed-fs/internal/logging"
-	"github.com/satyam709/distributed-fs/storage/heartbeat"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/replication"
 	"github.com/satyam709/distributed-fs/storage/server"
+	"github.com/satyam709/distributed-fs/storage/service"
 	"github.com/satyam709/distributed-fs/storage/store"
 	"google.golang.org/grpc"
 )
 
-var _ heartbeat.NodeInfo = (*StorageNode)(nil)
+var _ service.NodeInfo = (*StorageNode)(nil)
 
 // StorageNode is the top-level runtime for a storage service instance.
 // It owns the gRPC server lifecycle and wires the StorageService,
@@ -31,7 +30,8 @@ type StorageNode struct {
 	grpcServer         *grpc.Server
 	peerDialer         *replication.PeerDialer
 	replicationManager *replication.ReplicationManager
-	heartbeatSender    *heartbeat.HeartbeatSender
+	registerer         service.NodeRegisterer
+	heartbeatSender    *service.HeartbeatSender
 }
 
 // NewStorageNode constructs a StorageNode. Returns an error if store or logger
@@ -88,6 +88,18 @@ func (s *StorageNode) GetChunkCount() uint32 {
 	return uint32(len(chunks))
 }
 
+// GetChunkList returns the IDs of chunks currently stored on this node.
+// Implements the service.NodeInfo interface.
+func (s *StorageNode) GetChunkList() ([]string, error) {
+	return s.store.List()
+}
+
+// GetGrpcAddr returns this node's gRPC bind address.
+// Implements the service.NodeInfo interface.
+func (s *StorageNode) GetGrpcAddr() string {
+	return s.config.GRPCAddr
+}
+
 // Start binds the TCP listener, wires gRPC services, and launches the server
 // in a goroutine. It returns immediately; use Stop to initiate graceful shutdown.
 func (s *StorageNode) Start() error {
@@ -96,17 +108,19 @@ func (s *StorageNode) Start() error {
 	}
 
 	ctx := context.Background()
+	s.registerer = service.NewStorageNodeRegisterer(s, s.metaClient)
 
-	if err := s.registerWithMetadata(ctx); err != nil {
+	if err := s.registerer.RegisterWithMetadata(ctx); err != nil {
 		s.logger.Warn("StorageNode: failed to register with metadata, will retry on heartbeat",
 			slog.String("err", err.Error()))
 	}
 
-	s.heartbeatSender = heartbeat.NewHeartbeatSender(
+	s.heartbeatSender = service.NewHeartbeatSender(
 		s.config.HeartbeatInterval,
 		s.metaClient,
 		s,
 		s.replicationManager,
+		s.registerer,
 	)
 
 	s.logger.Info("StorageNode: binding TCP listener", slog.String("addr", s.config.GRPCAddr))
@@ -153,56 +167,6 @@ func (s *StorageNode) Start() error {
 	return nil
 }
 
-// registerWithMetadata registers this storage node with the metadata cluster.
-// It scans the local store for existing chunks and reports them as part of
-// the registration. Called during startup. If registration fails, the node
-// will retry via heartbeat.
-func (s *StorageNode) registerWithMetadata(ctx context.Context) error {
-	chunkIDs, err := s.store.List()
-	if err != nil {
-		return err
-	}
-
-	s.logger.Info("StorageNode: registering with metadata",
-		slog.String("nodeID", s.config.NodeID),
-		slog.String("addr", s.config.GRPCAddr),
-		slog.Int("chunkCount", len(chunkIDs)))
-
-	resp, err := s.metaClient.RegisterNode(ctx, &pb_meta.RegisterNodeRequest{
-		NodeId:    s.config.NodeID,
-		Address:   s.config.GRPCAddr,
-		FreeSpace: int64(s.GetFreeSpace()),
-		ChunkIds:  chunkIDs,
-	})
-	if err != nil {
-		return err
-	}
-
-	s.logger.Info("StorageNode: registered with metadata",
-		slog.String("confirmedNodeID", resp.NodeId))
-	return nil
-}
-
-// deregisterFromMetadata marks this node as leaving the cluster.
-// Called during graceful shutdown. Marks the node as draining so no new
-// chunks are placed on it, and triggers repair for its existing chunks.
-func (s *StorageNode) deregisterFromMetadata(ctx context.Context) error {
-	s.logger.Info("StorageNode: deregistering from metadata",
-		slog.String("nodeID", s.config.NodeID))
-
-	_, err := s.metaClient.DeregisterNode(ctx, &pb_meta.DeregisterNodeRequest{
-		NodeId: s.config.NodeID,
-	})
-	if err != nil {
-		s.logger.Warn("StorageNode: failed to deregister",
-			slog.String("err", err.Error()))
-		return err
-	}
-
-	s.logger.Info("StorageNode: deregistered from metadata")
-	return nil
-}
-
 // Stop initiates a graceful shutdown of the gRPC server, repair workers,
 // heartbeat sender, and peer connections.
 func (s *StorageNode) Stop() {
@@ -218,7 +182,9 @@ func (s *StorageNode) Stop() {
 		s.heartbeatSender.StopAndWait(ctx)
 	}
 
-	s.deregisterFromMetadata(ctx)
+	if s.registerer != nil {
+		s.registerer.DeregisterFromMetadata(ctx)
+	}
 
 	s.grpcServer.GracefulStop()
 	s.replicationManager.Stop()

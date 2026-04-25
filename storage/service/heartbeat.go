@@ -1,4 +1,4 @@
-package heartbeat
+package service
 
 import (
 	"context"
@@ -10,23 +10,20 @@ import (
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/replication"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
 	REQUEST_TIMEOUT = 10
 )
 
-type NodeInfo interface {
-	GetFreeSpace() uint64
-	GetNodeID() string
-	GetChunkCount() uint32
-}
-
 type HeartbeatSender struct {
 	gap        time.Duration
 	client     metaclient.StorageMetadataClientInterface
 	nodeInfo   NodeInfo
 	replicator replication.Replicator
+	registerer NodeRegisterer
 	logger     *logging.CLogger
 	wg         sync.WaitGroup
 	ctx        context.Context
@@ -34,12 +31,13 @@ type HeartbeatSender struct {
 	once       sync.Once
 }
 
-func NewHeartbeatSender(gap time.Duration, client metaclient.StorageMetadataClientInterface, ni NodeInfo, replicator replication.Replicator) *HeartbeatSender {
+func NewHeartbeatSender(gap time.Duration, client metaclient.StorageMetadataClientInterface, ni NodeInfo, replicator replication.Replicator, registerer NodeRegisterer) *HeartbeatSender {
 	return &HeartbeatSender{
 		gap:        gap,
 		client:     client,
 		nodeInfo:   ni,
 		replicator: replicator,
+		registerer: registerer,
 		logger:     logging.NewCLogger().With(slog.String("component", "HeartbeatSender")),
 	}
 }
@@ -83,6 +81,17 @@ func (hs *HeartbeatSender) heartbeatTicker(ctx context.Context) {
 		case <-ticker.C:
 			res, err := hs.sendBeat(ctx)
 			if err != nil {
+				if status.Code(err) == codes.NotFound {
+					hs.logger.Warn("heartbeatTicker: node not registered, retrying registration")
+					if hs.registerer == nil {
+						hs.logger.Warn("heartbeatTicker: registerer is nil, cannot auto-register")
+						continue
+					}
+					if regErr := hs.registerer.RegisterWithMetadata(ctx); regErr != nil {
+						hs.logger.Warn("heartbeatTicker: failed to register on heartbeat", slog.String("err", regErr.Error()))
+					}
+					continue
+				}
 				hs.logger.Warn("heartbeatTicker: failed to send beat", slog.String("err", err.Error()))
 				continue
 			}

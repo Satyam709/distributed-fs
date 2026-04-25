@@ -1,4 +1,4 @@
-package heartbeat
+package service
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"github.com/satyam709/distributed-fs/storage/replication"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type mockNodeInfo struct {
@@ -20,9 +22,11 @@ type mockNodeInfo struct {
 	chunkCount uint32
 }
 
-func (m *mockNodeInfo) GetFreeSpace() uint64  { return m.freeSpace }
-func (m *mockNodeInfo) GetNodeID() string     { return m.nodeID }
-func (m *mockNodeInfo) GetChunkCount() uint32 { return m.chunkCount }
+func (m *mockNodeInfo) GetFreeSpace() uint64            { return m.freeSpace }
+func (m *mockNodeInfo) GetNodeID() string               { return m.nodeID }
+func (m *mockNodeInfo) GetChunkCount() uint32           { return m.chunkCount }
+func (m *mockNodeInfo) GetChunkList() ([]string, error) { return []string{"c1"}, nil }
+func (m *mockNodeInfo) GetGrpcAddr() string             { return ":4000" }
 
 type mockReplicator struct {
 	mu          sync.Mutex
@@ -50,6 +54,20 @@ type mockMetadataClient struct {
 	reportCalls    int
 }
 
+type mockNodeRegisterer struct {
+	registerCalls int
+	registerErr   error
+}
+
+func (m *mockNodeRegisterer) RegisterWithMetadata(ctx context.Context) error {
+	m.registerCalls++
+	return m.registerErr
+}
+
+func (m *mockNodeRegisterer) DeregisterFromMetadata(ctx context.Context) error {
+	return nil
+}
+
 func (m *mockMetadataClient) Heartbeat(ctx context.Context, in *pb_meta.HeartbeatRequest, opts ...grpc.CallOption) (*pb_meta.HeartbeatResponse, error) {
 	m.heartbeatCalls++
 	if m.heartbeatFunc != nil {
@@ -71,7 +89,7 @@ func TestNewHeartbeatSender(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node", freeSpace: 1000, chunkCount: 10}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(5, client, ni, rep)
+	sender := NewHeartbeatSender(5, client, ni, rep, nil)
 	assert.NotNil(t, sender)
 	assert.Equal(t, uint64(1000), sender.nodeInfo.GetFreeSpace())
 	assert.Equal(t, "test-node", sender.nodeInfo.GetNodeID())
@@ -82,7 +100,7 @@ func TestHeartbeatSender_StartAndStop(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node", freeSpace: 1000, chunkCount: 10}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sender.Start(ctx)
@@ -98,7 +116,7 @@ func TestHeartbeatSender_StopBeforeStart(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node"}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	assert.NotPanics(t, func() {
 		sender.StopAndWait(context.Background())
 	})
@@ -109,7 +127,7 @@ func TestHeartbeatSender_StopIdempotent(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node"}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sender.Start(ctx)
@@ -128,7 +146,7 @@ func TestHeartbeatSender_HeartbeatError(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node"}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sender.Start(ctx)
@@ -154,7 +172,7 @@ func TestHeartbeatSender_ProcessRepairJobs(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node"}
 	rep := &mockReplicator{}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sender.Start(ctx)
@@ -184,7 +202,7 @@ func TestHeartbeatSender_RepairJobDropped(t *testing.T) {
 	ni := &mockNodeInfo{nodeID: "test-node"}
 	rep := &mockReplicator{shouldFail: true, failCounter: 1}
 
-	sender := NewHeartbeatSender(time.Second, client, ni, rep)
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sender.Start(ctx)
@@ -193,6 +211,27 @@ func TestHeartbeatSender_RepairJobDropped(t *testing.T) {
 	cancel()
 
 	assert.Len(t, rep.enqueued, 0)
+}
+
+func TestHeartbeatSender_HeartbeatNotFoundTriggersRegister(t *testing.T) {
+	client := &mockMetadataClient{
+		heartbeatFunc: func(ctx context.Context, in *pb_meta.HeartbeatRequest, opts ...grpc.CallOption) (*pb_meta.HeartbeatResponse, error) {
+			return nil, status.Error(codes.NotFound, "node not registered")
+		},
+	}
+	ni := &mockNodeInfo{nodeID: "test-node"}
+	rep := &mockReplicator{}
+	reg := &mockNodeRegisterer{}
+
+	sender := NewHeartbeatSender(time.Second, client, ni, rep, reg)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sender.Start(ctx)
+	time.Sleep(1200 * time.Millisecond)
+	sender.StopAndWait(context.Background())
+	cancel()
+
+	assert.Greater(t, reg.registerCalls, 0)
 }
 
 func TestHeartbeatSender_NodeInfoInterface(t *testing.T) {
