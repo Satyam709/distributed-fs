@@ -48,15 +48,11 @@ type StorageNodeConfig struct {
 	DataDir string `json:"data_dir"`
 
 	ReplicationFactor int `json:"replication_factor"`
-
-	logger *logging.CLogger
 }
 
 // DefaultStorageNodeConfig returns the config with Defaults
 func DefaultStorageNodeConfig() *StorageNodeConfig {
-	cfg := &StorageNodeConfig{
-		logger: logging.NewCLogger().With("component", "Config"),
-	}
+	cfg := &StorageNodeConfig{}
 	cfg.Default()
 	return cfg
 }
@@ -73,7 +69,10 @@ func LoadConfigDefaultFlow() (*StorageNodeConfig, error) {
 		}
 	}
 
-	cfg.ApplyEnv()
+	if err := cfg.ApplyEnv(); err != nil {
+		return nil, fmt.Errorf("failed to load config %w", err)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to load config %w", err)
 	}
@@ -145,8 +144,8 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 }
 
 // ApplyEnv tries to override the existing conig with the values from EnvironmentVariables
-// The valid values are applied rest are left unmodified
-func (c *StorageNodeConfig) ApplyEnv() {
+// Returns error if any env var has invalid value
+func (c *StorageNodeConfig) ApplyEnv() error {
 	if v := os.Getenv(EnvStorageNodeID); v != "" {
 		c.NodeID = v
 	}
@@ -163,27 +162,29 @@ func (c *StorageNodeConfig) ApplyEnv() {
 		if parsed, err := strconv.Atoi(v); err == nil {
 			c.ReplicationFactor = parsed
 		} else {
-			c.logger.Warn("invalid env var using default",
-				slog.String("env", EnvStorageReplicationFactor),
-				slog.Int("default", DefaultStorageReplicationFactor))
+			return fmt.Errorf("invalid env var %s: %w", EnvStorageReplicationFactor, err)
 		}
 	}
-	c.applyDurationEnv(EnvStorageTimeout, &c.Timeout)
-	c.applyDurationEnv(EnvStorageHeartbeatInterval, &c.HeartbeatInterval)
+	if err := c.applyDurationEnv(EnvStorageTimeout, &c.Timeout); err != nil {
+		return err
+	}
+	if err := c.applyDurationEnv(EnvStorageHeartbeatInterval, &c.HeartbeatInterval); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (c *StorageNodeConfig) applyDurationEnv(key string, target *time.Duration) {
+func (c *StorageNodeConfig) applyDurationEnv(key string, target *time.Duration) error {
 	v := os.Getenv(key)
 	if v == "" {
-		return
+		return nil
 	}
-	if d, err := time.ParseDuration(v); err == nil {
+	d, err := time.ParseDuration(v)
+	if err == nil {
 		*target = d
-		return
-	} else {
-		c.logger.Warn("invalid env var using default",
-			slog.String("env", key))
+		return nil
 	}
+	return fmt.Errorf("invalid env var %s: %w", key, err)
 }
 
 func (c *StorageNodeConfig) Default() {
@@ -222,7 +223,6 @@ func (c *StorageNodeConfig) Validate() error {
 	}
 	return nil
 }
-
 
 func LoadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
 	nodeIDPath := filepath.Join(dataDir, "node_id")

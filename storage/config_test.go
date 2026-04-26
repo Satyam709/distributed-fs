@@ -85,3 +85,88 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, defConfig.ReplicationFactor, DefaultStorageReplicationFactor)
 	assert.Equal(t, defConfig.Timeout, DefaultStorageTimeout)
 }
+
+func TestLoadConfigDefaultFlow_DefaultsOnly(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, DefaultStorageGRPCAddr, cfg.GRPCAddr)
+	assert.Equal(t, DefaultStorageMetadataAddr, cfg.MetadataAddr)
+	assert.Equal(t, DefaultStorageDataDir, cfg.DataDir)
+	assert.Equal(t, DefaultStorageReplicationFactor, cfg.ReplicationFactor)
+}
+
+func TestLoadConfigDefaultFlow_WithEnvOverride(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	t.Setenv(EnvStorageGrpcAddr, ":5000")
+	t.Setenv(EnvStorageDataDir, "/custom/data")
+	t.Setenv(EnvStorageReplicationFactor, "5")
+
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, ":5000", cfg.GRPCAddr)
+	assert.Equal(t, "/custom/data", cfg.DataDir)
+	assert.Equal(t, 5, cfg.ReplicationFactor)
+}
+
+func TestLoadConfigDefaultFlow_JSONOverridesDefaults(t *testing.T) {
+	jsonContent := `{"grpc_addr": ":4500", "replication_factor": 4}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, ":4500", cfg.GRPCAddr)
+	assert.Equal(t, 4, cfg.ReplicationFactor)
+	assert.Equal(t, DefaultStorageDataDir, cfg.DataDir)
+}
+
+func TestLoadConfigDefaultFlow_EnvOverridesJSON(t *testing.T) {
+	jsonContent := `{"grpc_addr": ":4500", "replication_factor": 4}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+	t.Setenv(EnvStorageGrpcAddr, ":6000")
+
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+	assert.Equal(t, ":6000", cfg.GRPCAddr, "env should override JSON")
+	assert.Equal(t, 4, cfg.ReplicationFactor)
+}
+
+func TestLoadConfigDefaultFlow_InvalidJSONPath(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "/nonexistent/path/config.json")
+
+	_, err := LoadConfigDefaultFlow()
+	assert.Error(t, err)
+}
+
+func TestLoadConfigDefaultFlow_InvalidEnvDuration(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	t.Setenv(EnvStorageTimeout, "invalid-duration")
+
+	_, err := LoadConfigDefaultFlow()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid env var STORAGE_TIMEOUT")
+}
+
+func TestApplyEnv_InvalidReplicationFactor(t *testing.T) {
+	t.Setenv(EnvStorageReplicationFactor, "not-a-number")
+
+	cfg := DefaultStorageNodeConfig()
+	err := cfg.ApplyEnv()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid env var STORAGE_REPLICATION_FACTOR")
+}

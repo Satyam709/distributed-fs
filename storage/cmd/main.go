@@ -18,11 +18,14 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
+	// LoadConfigDefaultFlow applies config in order: Defaults -> JSON file -> Environment variables
+	// Priority increases: Env vars override JSON, JSON overrides defaults
 	cfg, err := storage.LoadConfigDefaultFlow()
 	if err != nil {
 		logger.FatalError("invalid config", err)
 	}
 
+	// If NodeID not provided in config, load from file or generate new one
 	nodeID := cfg.NodeID
 	if nodeID == "" {
 		nodeID = storage.LoadOrGenerateNodeID(cfg.DataDir, logger)
