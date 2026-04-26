@@ -69,8 +69,6 @@ func WithStorageClient(client reconcile.StorageClient) AppOption {
 }
 
 func NewMetadataApp(config NodeConfig, opts ...AppOption) (*MetadataApp, error) {
-	config.Default()
-
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}

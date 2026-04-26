@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/google/uuid"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
@@ -19,17 +18,17 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	cfg := storage.DefaultStorageNodeConfig()
-	cfg.GRPCAddr = ":4000"
-	cfg.MetadataAddr = ":3000"
-
-	if err := cfg.Validate(); err != nil {
+	// LoadConfigDefaultFlow applies config in order: Defaults -> JSON file -> Environment variables
+	// Priority increases: Env vars override JSON, JSON overrides defaults
+	cfg, err := storage.LoadConfigDefaultFlow()
+	if err != nil {
 		logger.FatalError("invalid config", err)
 	}
 
+	// If NodeID not provided in config, load from file or generate new one
 	nodeID := cfg.NodeID
 	if nodeID == "" {
-		nodeID = loadOrGenerateNodeID(cfg.DataDir, logger)
+		nodeID = storage.LoadOrGenerateNodeID(cfg.DataDir, logger)
 		cfg.NodeID = nodeID
 	}
 
@@ -92,25 +91,4 @@ func main() {
 	node.Stop()
 	boltDb.CleanUp()
 	logger.Info("storage node shut down cleanly")
-}
-
-func loadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
-	nodeIDPath := filepath.Join(dataDir, "node_id")
-
-	data, err := os.ReadFile(nodeIDPath)
-	if err == nil && len(data) > 0 {
-		nodeID := string(data)
-		logger.Info("loaded existing node_id", slog.String("nodeID", nodeID))
-		return nodeID
-	}
-
-	nodeID := uuid.New().String()
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		logger.FatalError("failed to create data directory", err)
-	}
-	if err := os.WriteFile(nodeIDPath, []byte(nodeID), 0644); err != nil {
-		logger.FatalError("failed to write node_id file", err)
-	}
-	logger.Info("generated new node_id", slog.String("nodeID", nodeID))
-	return nodeID
 }
