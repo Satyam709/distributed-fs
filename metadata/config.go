@@ -31,6 +31,27 @@ const (
 	DefaultSnapshotRetain    = 2
 )
 
+const (
+	EnvMetadataNodeID            string = "METADATA_NODE_ID"
+	EnvMetadataGrpcAddr          string = "METADATA_GRPC_ADDR"
+	EnvMetadataRaftAddr          string = "METADATA_RAFT_ADDR"
+	EnvMetadataRaftDir           string = "METADATA_RAFT_DIR"
+	EnvMetadataPeerAddrs         string = "METADATA_PEER_ADDRS"
+	EnvMetadataBootstrap         string = "METADATA_BOOTSTRAP"
+	EnvMetadataReplicationFactor string = "METADATA_REPLICATION_FACTOR"
+	EnvMetadataJsonConfigPath    string = "METADATA_CONFIG"
+
+	EnvMetadataSuspectTimeout    string = "METADATA_SUSPECT_TIMEOUT"
+	EnvMetadataDeadTimeout        string = "METADATA_DEAD_TIMEOUT"
+	EnvMetadataWatcherInterval   string = "METADATA_WATCHER_INTERVAL"
+	EnvMetadataReconcileDelay    string = "METADATA_RECONCILE_DELAY"
+	EnvMetadataHeartbeatTimeout  string = "METADATA_HEARTBEAT_TIMEOUT"
+	EnvMetadataElectionTimeout   string = "METADATA_ELECTION_TIMEOUT"
+	EnvMetadataSnapshotInterval string = "METADATA_SNAPSHOT_INTERVAL"
+	EnvMetadataSnapshotThreshold string = "METADATA_SNAPSHOT_THRESHOLD"
+	EnvMetadataSnapshotRetain   string = "METADATA_SNAPSHOT_RETAIN"
+)
+
 type NodeConfig struct {
 	NodeID    string            `json:"node_id"`
 	GRPCAddr  string            `json:"grpc_addr"`
@@ -96,6 +117,26 @@ func LoadFromJSON(path string) (*NodeConfig, error) {
 	}
 	cfg.Default()
 	return &cfg, nil
+}
+
+func LoadConfigDefaultFlow() (NodeConfig, error) {
+	cfg := DefaultNodeConfig()
+
+	if configPath := os.Getenv(EnvMetadataJsonConfigPath); configPath != "" {
+		if err := cfg.ApplyJSON(configPath); err != nil {
+			return NodeConfig{}, fmt.Errorf("failed to load config from %s: %w", configPath, err)
+		}
+	}
+
+	if err := cfg.ApplyEnv(); err != nil {
+		return NodeConfig{}, fmt.Errorf("failed to apply env config: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return NodeConfig{}, fmt.Errorf("failed to validate config: %w", err)
+	}
+
+	return cfg, nil
 }
 
 func (c *NodeConfig) ApplyJSON(path string) error {
@@ -180,49 +221,72 @@ func (c *NodeConfig) ApplyJSON(path string) error {
 	return nil
 }
 
-func (c *NodeConfig) ApplyEnv() {
-	if v := os.Getenv("METADATA_NODE_ID"); v != "" {
+func (c *NodeConfig) ApplyEnv() error {
+	if v := os.Getenv(EnvMetadataNodeID); v != "" {
 		c.NodeID = v
 	}
-	if v := os.Getenv("METADATA_GRPC_ADDR"); v != "" {
+	if v := os.Getenv(EnvMetadataGrpcAddr); v != "" {
 		c.GRPCAddr = v
 	}
-	if v := os.Getenv("METADATA_RAFT_ADDR"); v != "" {
+	if v := os.Getenv(EnvMetadataRaftAddr); v != "" {
 		c.RaftAddr = v
 	}
-	if v := os.Getenv("METADATA_RAFT_DIR"); v != "" {
+	if v := os.Getenv(EnvMetadataRaftDir); v != "" {
 		c.RaftDir = v
 	}
-	if v := os.Getenv("METADATA_PEER_ADDRS"); v != "" {
+	if v := os.Getenv(EnvMetadataPeerAddrs); v != "" {
 		c.PeerAddrs = parsePeerAddrs(v)
 	}
-	if v := os.Getenv("METADATA_BOOTSTRAP"); v != "" {
-		if parsed, err := strconv.ParseBool(v); err == nil {
-			c.Bootstrap = parsed
+	if v := os.Getenv(EnvMetadataBootstrap); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("invalid env var %s: %w", EnvMetadataBootstrap, err)
 		}
+		c.Bootstrap = parsed
 	}
-	if v := os.Getenv("METADATA_REPLICATION_FACTOR"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil {
-			c.ReplicationFactor = parsed
+	if v := os.Getenv(EnvMetadataReplicationFactor); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid env var %s: %w", EnvMetadataReplicationFactor, err)
 		}
+		c.ReplicationFactor = parsed
 	}
-	applyDurationEnv("METADATA_SUSPECT_TIMEOUT", &c.SuspectTimeout)
-	applyDurationEnv("METADATA_DEAD_TIMEOUT", &c.DeadTimeout)
-	applyDurationEnv("METADATA_WATCHER_INTERVAL", &c.WatcherInterval)
-	applyDurationEnv("METADATA_RECONCILE_DELAY", &c.ReconcileDelay)
-	applyDurationEnv("METADATA_HEARTBEAT_TIMEOUT", &c.HeartbeatTimeout)
-	applyDurationEnv("METADATA_ELECTION_TIMEOUT", &c.ElectionTimeout)
-	applyDurationEnv("METADATA_SNAPSHOT_INTERVAL", &c.SnapshotInterval)
-	if v := os.Getenv("METADATA_SNAPSHOT_THRESHOLD"); v != "" {
-		if parsed, err := strconv.ParseUint(v, 10, 64); err == nil {
-			c.SnapshotThreshold = parsed
+	if err := applyDurationEnv(EnvMetadataSuspectTimeout, &c.SuspectTimeout); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataDeadTimeout, &c.DeadTimeout); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataWatcherInterval, &c.WatcherInterval); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataReconcileDelay, &c.ReconcileDelay); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataHeartbeatTimeout, &c.HeartbeatTimeout); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataElectionTimeout, &c.ElectionTimeout); err != nil {
+		return err
+	}
+	if err := applyDurationEnv(EnvMetadataSnapshotInterval, &c.SnapshotInterval); err != nil {
+		return err
+	}
+	if v := os.Getenv(EnvMetadataSnapshotThreshold); v != "" {
+		parsed, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid env var %s: %w", EnvMetadataSnapshotThreshold, err)
 		}
+		c.SnapshotThreshold = parsed
 	}
-	if v := os.Getenv("METADATA_SNAPSHOT_RETAIN"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil {
-			c.SnapshotRetain = parsed
+	if v := os.Getenv(EnvMetadataSnapshotRetain); v != "" {
+		parsed, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid env var %s: %w", EnvMetadataSnapshotRetain, err)
 		}
+		c.SnapshotRetain = parsed
 	}
+	return nil
 }
 
 func applyDurationJSON(raw json.RawMessage, target *time.Duration) error {
@@ -231,36 +295,30 @@ func applyDurationJSON(raw json.RawMessage, target *time.Duration) error {
 	}
 
 	var asString string
-	if err := json.Unmarshal(raw, &asString); err == nil {
-		d, err := time.ParseDuration(asString)
-		if err != nil {
-			return err
-		}
-		*target = d
-		return nil
+	if err := json.Unmarshal(raw, &asString); err != nil {
+		return fmt.Errorf("invalid duration format: %w", err)
 	}
 
-	var asNumber float64
-	if err := json.Unmarshal(raw, &asNumber); err == nil {
-		*target = time.Duration(asNumber) * time.Second
-		return nil
+	d, err := time.ParseDuration(asString)
+	if err != nil {
+		return fmt.Errorf("invalid duration value: %w", err)
 	}
 
-	return errors.New("must be duration string or number of seconds")
+	*target = d
+	return nil
 }
 
-func applyDurationEnv(key string, target *time.Duration) {
+func applyDurationEnv(key string, target *time.Duration) error {
 	v := os.Getenv(key)
 	if v == "" {
-		return
+		return nil
 	}
-	if d, err := time.ParseDuration(v); err == nil {
-		*target = d
-		return
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fmt.Errorf("invalid env var %s: %w", key, err)
 	}
-	if sec, err := strconv.Atoi(v); err == nil {
-		*target = time.Duration(sec) * time.Second
-	}
+	*target = d
+	return nil
 }
 
 func parsePeerAddrs(s string) map[string]string {
@@ -269,7 +327,7 @@ func parsePeerAddrs(s string) map[string]string {
 	}
 
 	result := make(map[string]string)
-	for _, pair := range strings.Split(s, ",") {
+	for pair := range strings.SplitSeq(s, ",") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue

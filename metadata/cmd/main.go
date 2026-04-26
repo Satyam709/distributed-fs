@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -17,10 +16,9 @@ func main() {
 
 	logger.Info("distributed-fs metadata node starting")
 
-	cfg := loadConfig()
-	err := cfg.Validate()
+	cfg, err := metadata.LoadConfigDefaultFlow()
 	if err != nil {
-		logger.FatalError("failed to validate config: ", err)
+		logger.FatalError("failed to load config", err)
 	}
 
 	app, err := metadata.NewMetadataApp(cfg)
@@ -49,27 +47,4 @@ func main() {
 	}
 
 	logger.Info("metadata node shut down cleanly")
-}
-
-func loadConfig() metadata.NodeConfig {
-	cfg := metadata.DefaultNodeConfig()
-
-	configPath := getEnv("METADATA_CONFIG", "")
-	if configPath != "" {
-		if err := cfg.ApplyJSON(configPath); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to load config from %s: %v\n", configPath, err)
-			os.Exit(1)
-		}
-	}
-
-	cfg.ApplyEnv()
-	cfg.Default()
-	return cfg
-}
-
-func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
 }
