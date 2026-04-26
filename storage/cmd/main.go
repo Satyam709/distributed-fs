@@ -92,4 +92,3 @@ func main() {
 	boltDb.CleanUp()
 	logger.Info("storage node shut down cleanly")
 }
-

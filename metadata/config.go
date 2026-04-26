@@ -42,14 +42,14 @@ const (
 	EnvMetadataJsonConfigPath    string = "METADATA_CONFIG"
 
 	EnvMetadataSuspectTimeout    string = "METADATA_SUSPECT_TIMEOUT"
-	EnvMetadataDeadTimeout        string = "METADATA_DEAD_TIMEOUT"
+	EnvMetadataDeadTimeout       string = "METADATA_DEAD_TIMEOUT"
 	EnvMetadataWatcherInterval   string = "METADATA_WATCHER_INTERVAL"
 	EnvMetadataReconcileDelay    string = "METADATA_RECONCILE_DELAY"
 	EnvMetadataHeartbeatTimeout  string = "METADATA_HEARTBEAT_TIMEOUT"
 	EnvMetadataElectionTimeout   string = "METADATA_ELECTION_TIMEOUT"
-	EnvMetadataSnapshotInterval string = "METADATA_SNAPSHOT_INTERVAL"
+	EnvMetadataSnapshotInterval  string = "METADATA_SNAPSHOT_INTERVAL"
 	EnvMetadataSnapshotThreshold string = "METADATA_SNAPSHOT_THRESHOLD"
-	EnvMetadataSnapshotRetain   string = "METADATA_SNAPSHOT_RETAIN"
+	EnvMetadataSnapshotRetain    string = "METADATA_SNAPSHOT_RETAIN"
 )
 
 type NodeConfig struct {
