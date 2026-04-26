@@ -7,7 +7,7 @@ RUN apk add --no-cache make
 RUN go mod verify && go mod download
 RUN make build-metadata
 
-# get the build image to the app image
+# get the binary from the build image to the app image
 FROM  golang:1.26.2-alpine3.23 
 COPY --from=builder /app/bin/metadata /bin
 # make the raft data-directory
