@@ -4,11 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/satyam709/distributed-fs/internal/logging"
 )
 
+// Defaults
 const (
 	DefaultStorageGRPCAddr          = ":4000"
 	DefaultStorageMetadataAddr      = ":3000"
@@ -16,6 +22,18 @@ const (
 	DefaultStorageTimeout           = 120 * time.Second
 	DefaultStorageHeartbeatInterval = 3 * time.Second
 	DefaultStorageReplicationFactor = 3
+)
+
+// EnvironmentVariables
+const (
+	EnvStorageNodeID            string = "STORAGE_NODE_ID"
+	EnvStorageGrpcAddr          string = "STORAGE_GRPC_ADDR"
+	EnvStorageMetadataAddr      string = "STORAGE_METADATA_ADDR"
+	EnvStorageDataDir           string = "STORAGE_DATA_DIR"
+	EnvStorageReplicationFactor string = "STORAGE_REPLICATION_FACTOR"
+	EnvStorageTimeout           string = "STORAGE_TIMEOUT"
+	EnvStorageHeartbeatInterval string = "STORAGE_HEARTBEAT_INTERVAL"
+	EnvStorageJsonConfigPath    string = "STORAGE_CONFIG"
 )
 
 type StorageNodeConfig struct {
@@ -30,30 +48,51 @@ type StorageNodeConfig struct {
 	DataDir string `json:"data_dir"`
 
 	ReplicationFactor int `json:"replication_factor"`
+
+	logger *logging.CLogger
 }
 
+// DefaultStorageNodeConfig returns the config with Defaults
 func DefaultStorageNodeConfig() *StorageNodeConfig {
 	cfg := &StorageNodeConfig{
-		GRPCAddr:          DefaultStorageGRPCAddr,
-		MetadataAddr:      DefaultStorageMetadataAddr,
-		Timeout:           DefaultStorageTimeout,
-		HeartbeatInterval: DefaultStorageHeartbeatInterval,
-		DataDir:           DefaultStorageDataDir,
-		ReplicationFactor: DefaultStorageReplicationFactor,
+		logger: logging.NewCLogger().With("component", "Config"),
 	}
 	cfg.Default()
 	return cfg
 }
 
+// LoadConfigDefaultFlow is first loads a defaults config and than looks for json config to apply overrides
+// next it looks for env var to override further
+// LoadFlow: Defaults, Json, Env => increasing order of priority
+func LoadConfigDefaultFlow() (*StorageNodeConfig, error) {
+	cfg := DefaultStorageNodeConfig()
+
+	if configPath := os.Getenv(EnvStorageJsonConfigPath); configPath != "" {
+		if err := cfg.ApplyJSON(configPath); err != nil {
+			return nil, fmt.Errorf("failed to load config from %s: %w", configPath, err)
+		}
+	}
+
+	cfg.ApplyEnv()
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to load config %w", err)
+	}
+
+	return cfg, nil
+}
+
+// LoadFromJSON init a default config and loads the config overrides from the json path
+// return nil config in case of error
 func LoadFromJSON(path string) (*StorageNodeConfig, error) {
 	cfg := DefaultStorageNodeConfig()
 	if err := cfg.ApplyJSON(path); err != nil {
 		return nil, err
 	}
-	cfg.Default()
 	return cfg, nil
 }
 
+// ApplyJSON it applies the values from a json config and return a nil config
+// with error if json has invalid entries
 func (c *StorageNodeConfig) ApplyJSON(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -61,13 +100,13 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 	}
 
 	var raw struct {
-		NodeID            *string         `json:"node_id"`
-		GRPCAddr          *string         `json:"grpc_addr"`
-		MetadataAddr      *string         `json:"metadata_addr"`
-		Timeout           json.RawMessage `json:"timeout"`
-		HeartbeatInterval json.RawMessage `json:"heartbeat_interval"`
-		DataDir           *string         `json:"data_dir"`
-		ReplicationFactor *int            `json:"replication_factor"`
+		NodeID            *string `json:"node_id"`
+		GRPCAddr          *string `json:"grpc_addr"`
+		MetadataAddr      *string `json:"metadata_addr"`
+		Timeout           *string `json:"timeout"`
+		HeartbeatInterval *string `json:"heartbeat_interval"`
+		DataDir           *string `json:"data_dir"`
+		ReplicationFactor *int    `json:"replication_factor"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -90,63 +129,50 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 		c.ReplicationFactor = *raw.ReplicationFactor
 	}
 
-	if err := applyDurationJSON(raw.Timeout, &c.Timeout); err != nil {
-		return fmt.Errorf("config: timeout: %w", err)
+	if raw.Timeout != nil {
+		if c.Timeout, err = time.ParseDuration(*raw.Timeout); err != nil {
+			return fmt.Errorf("config: timeout: %w", err)
+		}
 	}
-	if err := applyDurationJSON(raw.HeartbeatInterval, &c.HeartbeatInterval); err != nil {
-		return fmt.Errorf("config: heartbeat_interval: %w", err)
+
+	if raw.HeartbeatInterval != nil {
+		if c.HeartbeatInterval, err = time.ParseDuration(*raw.HeartbeatInterval); err != nil {
+			return fmt.Errorf("config: heartbeat_interval: %w", err)
+		}
 	}
 
 	return nil
 }
 
+// ApplyEnv tries to override the existing conig with the values from EnvironmentVariables
+// The valid values are applied rest are left unmodified
 func (c *StorageNodeConfig) ApplyEnv() {
-	if v := os.Getenv("STORAGE_NODE_ID"); v != "" {
+	if v := os.Getenv(EnvStorageNodeID); v != "" {
 		c.NodeID = v
 	}
-	if v := os.Getenv("STORAGE_GRPC_ADDR"); v != "" {
+	if v := os.Getenv(EnvStorageGrpcAddr); v != "" {
 		c.GRPCAddr = v
 	}
-	if v := os.Getenv("STORAGE_METADATA_ADDR"); v != "" {
+	if v := os.Getenv(EnvStorageMetadataAddr); v != "" {
 		c.MetadataAddr = v
 	}
-	if v := os.Getenv("STORAGE_DATA_DIR"); v != "" {
+	if v := os.Getenv(EnvStorageDataDir); v != "" {
 		c.DataDir = v
 	}
-	if v := os.Getenv("STORAGE_REPLICATION_FACTOR"); v != "" {
+	if v := os.Getenv(EnvStorageReplicationFactor); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil {
 			c.ReplicationFactor = parsed
+		} else {
+			c.logger.Warn("invalid env var using default",
+				slog.String("env", EnvStorageReplicationFactor),
+				slog.Int("default", DefaultStorageReplicationFactor))
 		}
 	}
-	applyDurationEnv("STORAGE_TIMEOUT", &c.Timeout)
-	applyDurationEnv("STORAGE_HEARTBEAT_INTERVAL", &c.HeartbeatInterval)
+	c.applyDurationEnv(EnvStorageTimeout, &c.Timeout)
+	c.applyDurationEnv(EnvStorageHeartbeatInterval, &c.HeartbeatInterval)
 }
 
-func applyDurationJSON(raw json.RawMessage, target *time.Duration) error {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil
-	}
-
-	var asString string
-	if err := json.Unmarshal(raw, &asString); err == nil {
-		d, err := time.ParseDuration(asString)
-		if err != nil {
-			return err
-		}
-		*target = d
-		return nil
-	}
-
-	var asNumber float64
-	if err := json.Unmarshal(raw, &asNumber); err == nil {
-		*target = time.Duration(asNumber) * time.Second
-		return nil
-	}
-
-	return errors.New("must be duration string or number of seconds")
-}
-
-func applyDurationEnv(key string, target *time.Duration) {
+func (c *StorageNodeConfig) applyDurationEnv(key string, target *time.Duration) {
 	v := os.Getenv(key)
 	if v == "" {
 		return
@@ -154,9 +180,9 @@ func applyDurationEnv(key string, target *time.Duration) {
 	if d, err := time.ParseDuration(v); err == nil {
 		*target = d
 		return
-	}
-	if sec, err := strconv.Atoi(v); err == nil {
-		*target = time.Duration(sec) * time.Second
+	} else {
+		c.logger.Warn("invalid env var using default",
+			slog.String("env", key))
 	}
 }
 
@@ -195,4 +221,26 @@ func (c *StorageNodeConfig) Validate() error {
 		return errors.New("StorageNodeConfig: ReplicationFactor must be at least 1")
 	}
 	return nil
+}
+
+
+func LoadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
+	nodeIDPath := filepath.Join(dataDir, "node_id")
+
+	data, err := os.ReadFile(nodeIDPath)
+	if err == nil && len(data) > 0 {
+		nodeID := string(data)
+		logger.Info("loaded existing node_id", slog.String("nodeID", nodeID))
+		return nodeID
+	}
+
+	nodeID := uuid.New().String()
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		logger.FatalError("failed to create data directory", err)
+	}
+	if err := os.WriteFile(nodeIDPath, []byte(nodeID), 0644); err != nil {
+		logger.FatalError("failed to write node_id file", err)
+	}
+	logger.Info("generated new node_id", slog.String("nodeID", nodeID))
+	return nodeID
 }

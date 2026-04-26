@@ -1,14 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
-	"github.com/google/uuid"
 	"github.com/satyam709/distributed-fs/internal/logging"
 	"github.com/satyam709/distributed-fs/storage"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
@@ -20,15 +18,14 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	cfg := loadConfig()
-
-	if err := cfg.Validate(); err != nil {
+	cfg, err := storage.LoadConfigDefaultFlow()
+	if err != nil {
 		logger.FatalError("invalid config", err)
 	}
 
 	nodeID := cfg.NodeID
 	if nodeID == "" {
-		nodeID = loadOrGenerateNodeID(cfg.DataDir, logger)
+		nodeID = storage.LoadOrGenerateNodeID(cfg.DataDir, logger)
 		cfg.NodeID = nodeID
 	}
 
@@ -93,46 +90,3 @@ func main() {
 	logger.Info("storage node shut down cleanly")
 }
 
-func loadConfig() *storage.StorageNodeConfig {
-	cfg := storage.DefaultStorageNodeConfig()
-
-	configPath := getEnv("STORAGE_CONFIG", "")
-	if configPath != "" {
-		if err := cfg.ApplyJSON(configPath); err != nil {
-			fmt.Fprintf(os.Stderr, "failed to load config from %s: %v\n", configPath, err)
-			os.Exit(1)
-		}
-	}
-
-	cfg.ApplyEnv()
-	cfg.Default()
-	return cfg
-}
-
-func loadOrGenerateNodeID(dataDir string, logger *logging.CLogger) string {
-	nodeIDPath := filepath.Join(dataDir, "node_id")
-
-	data, err := os.ReadFile(nodeIDPath)
-	if err == nil && len(data) > 0 {
-		nodeID := string(data)
-		logger.Info("loaded existing node_id", slog.String("nodeID", nodeID))
-		return nodeID
-	}
-
-	nodeID := uuid.New().String()
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		logger.FatalError("failed to create data directory", err)
-	}
-	if err := os.WriteFile(nodeIDPath, []byte(nodeID), 0644); err != nil {
-		logger.FatalError("failed to write node_id file", err)
-	}
-	logger.Info("generated new node_id", slog.String("nodeID", nodeID))
-	return nodeID
-}
-
-func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
