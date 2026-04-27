@@ -28,6 +28,7 @@ type StorageNode struct {
 	store              store.Store
 	metaClient         metaclient.StorageMetadataClientInterface
 	grpcServer         *grpc.Server
+	grpcLis            net.Listener
 	peerDialer         *replication.PeerDialer
 	replicationManager *replication.ReplicationManager
 	registerer         service.NodeRegisterer
@@ -94,35 +95,38 @@ func (s *StorageNode) GetChunkList() ([]string, error) {
 	return s.store.List()
 }
 
-// GetGrpcAddr returns this node's gRPC bind address.
+// GetGrpcAddr returns this node's actual gRPC address.
+// If the listener is bound (after Start), returns the real address,
+// which is critical when the config uses ":0" for OS-assigned ports.
 // Implements the service.NodeInfo interface.
 func (s *StorageNode) GetGrpcAddr() string {
+	if s.grpcLis != nil {
+		return s.grpcLis.Addr().String()
+	}
 	return s.config.GRPCAddr
 }
 
-// Start binds the TCP listener, wires gRPC services, and launches the server
-// in a goroutine. It returns immediately; use Stop to initiate graceful shutdown.
+// BoundAddr returns the actual address the node is listening on.
+// Only valid after Start() returns. Useful in integration tests.
+func (s *StorageNode) BoundAddr() string {
+	if s.grpcLis == nil {
+		return ""
+	}
+	return s.grpcLis.Addr().String()
+}
+
+// Start binds the TCP listener, wires gRPC services, registers with metadata,
+// and launches the server in a goroutine. It returns immediately; use Stop to
+// initiate graceful shutdown.
+//
+// The listener is bound BEFORE registration so that GetGrpcAddr() returns the
+// real address — critical when the config uses ":0" for OS-assigned ports.
 func (s *StorageNode) Start() error {
 	if err := s.config.Validate(); err != nil {
 		return err
 	}
 
-	ctx := context.Background()
-	s.registerer = service.NewStorageNodeRegisterer(s, s.metaClient)
-
-	if err := s.registerer.RegisterWithMetadata(ctx); err != nil {
-		s.logger.Warn("StorageNode: failed to register with metadata, will retry on heartbeat",
-			slog.String("err", err.Error()))
-	}
-
-	s.heartbeatSender = service.NewHeartbeatSender(
-		s.config.HeartbeatInterval,
-		s.metaClient,
-		s,
-		s.replicationManager,
-		s.registerer,
-	)
-
+	// 1. Bind listener FIRST so the real address is available.
 	s.logger.Info("StorageNode: binding TCP listener", slog.String("addr", s.config.GRPCAddr))
 
 	listener, err := net.Listen("tcp", s.config.GRPCAddr)
@@ -131,7 +135,9 @@ func (s *StorageNode) Start() error {
 			slog.String("addr", s.config.GRPCAddr))
 		return err
 	}
+	s.grpcLis = listener
 
+	// 2. Wire gRPC services.
 	s.grpcServer = grpc.NewServer(grpc.ConnectionTimeout(s.config.Timeout))
 
 	storageServer, err := server.NewStorageServerHandler(s.store, s.logger, s.metaClient, s.config.NodeID, s.replicationManager)
@@ -149,7 +155,7 @@ func (s *StorageNode) Start() error {
 	s.replicationManager.Start()
 
 	s.logger.Info("StorageNode: gRPC server starting",
-		slog.String("addr", s.config.GRPCAddr),
+		slog.String("addr", s.grpcLis.Addr().String()),
 		slog.Duration("connectionTimeout", s.config.Timeout),
 	)
 
@@ -159,10 +165,28 @@ func (s *StorageNode) Start() error {
 		}
 	}()
 
+	// 3. Register with metadata AFTER listener is bound — GetGrpcAddr()
+	//    now returns the real address, not ":0".
+	ctx := context.Background()
+	s.registerer = service.NewStorageNodeRegisterer(s, s.metaClient)
+
+	if err := s.registerer.RegisterWithMetadata(ctx); err != nil {
+		s.logger.Warn("StorageNode: failed to register with metadata, will retry on heartbeat",
+			slog.String("err", err.Error()))
+	}
+
+	// 4. Start heartbeat loop.
+	s.heartbeatSender = service.NewHeartbeatSender(
+		s.config.HeartbeatInterval,
+		s.metaClient,
+		s,
+		s.replicationManager,
+		s.registerer,
+	)
 	s.heartbeatSender.Start(ctx)
 
 	s.logger.Info("StorageNode: server is up and accepting connections",
-		slog.String("addr", s.config.GRPCAddr),
+		slog.String("addr", s.grpcLis.Addr().String()),
 		slog.String("nodeID", s.config.NodeID))
 	return nil
 }

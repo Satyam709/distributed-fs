@@ -2,5 +2,8 @@
   "[protobuf]": {
     "editor.defaultFormatter": "bufbuild.vscode-buf",
     "editor.formatOnSave": true
+  },
+  "gopls": {
+    "build.buildFlags": ["-tags=integration"]
   }
 }

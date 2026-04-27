@@ -215,6 +215,16 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 	return nil
 }
 
+// BoundGRPCAddr returns the actual address the gRPC server is listening on.
+// Only valid after Run() returns successfully. Useful in tests that use ":0"
+// to let the OS pick a free port.
+func (a *MetadataApp) BoundGRPCAddr() string {
+	if a.grpcLis == nil {
+		return ""
+	}
+	return a.grpcLis.Addr().String()
+}
+
 func (a *MetadataApp) Shutdown(ctx context.Context) error {
 	a.logger.Info("stopping metadata app")
 

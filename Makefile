@@ -1,5 +1,5 @@
 .PHONY: proto-gen build-storage build-metadata build-client build-all
-.PHONY: test-storage test-all
+.PHONY: test-storage test-all integration-test
 .PHONY: fmt go-fmt pb-fmt
 .PHONY: fmt-check go-fmt-check pb-fmt-check
 .PHONY: lint go-lint pb-lint
@@ -17,6 +17,9 @@ test-storage:    # run storage package tests
 
 test-all:        # all tests
 	go test -count=1 ./...
+
+integration-test: # run integration tests (metadata + storage cluster)
+	go test -tags integration -count=1 -timeout 120s -v ./integration/
 run-cluster:     # start 1 metadata + 4 storage nodes locally
 demo:            # run demo script
 	./scripts/test_upload_download.sh
