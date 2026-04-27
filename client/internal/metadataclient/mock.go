@@ -210,3 +210,7 @@ func (m *MockClient) GetChunkLocations(_ context.Context, chunkID string) ([]str
 	}
 	return nil, fmt.Errorf("mock: chunk %q not found", chunkID)
 }
+
+func (m *MockClient) Close() error {
+	return nil
+}

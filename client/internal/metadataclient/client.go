@@ -61,4 +61,7 @@ type Client interface {
 
 	// GetChunkLocations returns the live node addresses for a chunk.
 	GetChunkLocations(ctx context.Context, chunkID string) ([]string, error)
+
+	// Close cleans up any resources held by the client (e.g. gRPC connections).
+	Close() error
 }

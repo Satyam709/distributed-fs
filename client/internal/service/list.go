@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/satyam709/distributed-fs/client/metadataclient"
+	"github.com/satyam709/distributed-fs/client/internal/metadataclient"
 )
 
 // ListService provides file listing operations.

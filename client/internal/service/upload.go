@@ -8,11 +8,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/satyam709/distributed-fs/client"
-	"github.com/satyam709/distributed-fs/client/chunker"
-	"github.com/satyam709/distributed-fs/client/manifest"
-	"github.com/satyam709/distributed-fs/client/metadataclient"
-	"github.com/satyam709/distributed-fs/client/storageclient"
+	"github.com/satyam709/distributed-fs/client/internal/chunker"
+	"github.com/satyam709/distributed-fs/client/internal/dfsclientconfig"
+	"github.com/satyam709/distributed-fs/client/internal/manifest"
+	"github.com/satyam709/distributed-fs/client/internal/metadataclient"
+	"github.com/satyam709/distributed-fs/client/internal/storageclient"
 	"github.com/satyam709/distributed-fs/internal/checksum"
 )
 
@@ -35,7 +35,7 @@ type ProgressCallback func(chunkIndex int, total int, err error)
 // UploadService orchestrates file uploads using chunker, manifest, metadata
 // and storage clients. All business logic lives here — the CLI is just glue.
 type UploadService struct {
-	cfg       *client.Config
+	cfg       *dfsclientconfig.Config
 	metadata  metadataclient.Client
 	storage   storageclient.Client
 	manifests *manifest.Manager
@@ -43,7 +43,7 @@ type UploadService struct {
 
 // NewUploadService creates an UploadService with all required dependencies.
 func NewUploadService(
-	cfg *client.Config,
+	cfg *dfsclientconfig.Config,
 	meta metadataclient.Client,
 	storage storageclient.Client,
 	manifests *manifest.Manager,

@@ -1,4 +1,4 @@
-package client
+package dfsclientconfig
 
 import (
 	"os"
@@ -26,8 +26,8 @@ func DefaultConfig() *Config {
 		MaxParallelDownloads: 4,                           // Default 4
 		ManifestDir:          "./manifests_logs",
 		OutputDir:            "./downloads_logs",
-		RetryAttempts:        3,            // Default 3 retries per chunk
-		FrameSize:            32 * 1024,    // Default 32KB frames
+		RetryAttempts:        3,         // Default 3 retries per chunk
+		FrameSize:            32 * 1024, // Default 32KB frames
 	}
 }
 

@@ -65,7 +65,7 @@ func (g *GRPCClient) CommitChunk(ctx context.Context, chunkID, fileID string, co
 		ChunkId:        chunkID,
 		FileId:         fileID,
 		ConfirmedNodes: confirmedNodes,
-		Checksum:       checksum,
+		Checksum:       []byte(checksum),
 	})
 	if err != nil {
 		return fmt.Errorf("metadataclient: CommitChunk RPC failed: %w", err)
@@ -105,9 +105,9 @@ func (g *GRPCClient) GetFileByName(ctx context.Context, fileName string) (*FileI
 }
 
 func (g *GRPCClient) ListFiles(ctx context.Context, prefix string) ([]FileInfo, error) {
-	resp, err := g.client.ListFiles(ctx, &pb_meta.ListFilesRequest{
-		Prefix: prefix,
-	})
+	// Note: ListFilesRequest has no Prefix field in the current proto.
+	// Prefix filtering is done client-side for now.
+	resp, err := g.client.ListFiles(ctx, &pb_meta.ListFilesRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("metadataclient: ListFiles RPC failed: %w", err)
 	}
@@ -167,7 +167,7 @@ func protoToChunkInfo(c *pb_meta.ChunkInfo) ChunkInfo {
 		FileID:     c.GetFileId(),
 		ChunkIndex: int(c.GetChunkIndex()),
 		Size:       c.GetSize(),
-		Checksum:   c.GetChecksum(),
+		Checksum:   string(c.GetChecksum()),
 		Replicas:   c.GetReplicas(),
 	}
 }

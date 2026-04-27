@@ -9,9 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/satyam709/distributed-fs/client"
-	"github.com/satyam709/distributed-fs/client/metadataclient"
-	"github.com/satyam709/distributed-fs/client/storageclient"
+	"github.com/satyam709/distributed-fs/client/internal/dfsclientconfig"
+	"github.com/satyam709/distributed-fs/client/internal/metadataclient"
+	"github.com/satyam709/distributed-fs/client/internal/storageclient"
 	"github.com/satyam709/distributed-fs/internal/checksum"
 )
 
@@ -26,14 +26,14 @@ type DownloadResult struct {
 
 // DownloadService orchestrates file downloads using metadata and storage clients.
 type DownloadService struct {
-	cfg      *client.Config
+	cfg      *dfsclientconfig.Config
 	metadata metadataclient.Client
 	storage  storageclient.Client
 }
 
 // NewDownloadService creates a DownloadService with all required dependencies.
 func NewDownloadService(
-	cfg *client.Config,
+	cfg *dfsclientconfig.Config,
 	meta metadataclient.Client,
 	storage storageclient.Client,
 ) *DownloadService {

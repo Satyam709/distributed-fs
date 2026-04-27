@@ -11,18 +11,18 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/satyam709/distributed-fs/client"
-	"github.com/satyam709/distributed-fs/client/manifest"
-	"github.com/satyam709/distributed-fs/client/metadataclient"
-	"github.com/satyam709/distributed-fs/client/storageclient"
+	"github.com/satyam709/distributed-fs/client/internal/dfsclientconfig"
+	"github.com/satyam709/distributed-fs/client/internal/manifest"
+	"github.com/satyam709/distributed-fs/client/internal/metadataclient"
+	"github.com/satyam709/distributed-fs/client/internal/storageclient"
 	"github.com/satyam709/distributed-fs/internal/checksum"
 )
 
 // --- Test Helpers ---
 
-func testConfig(t *testing.T) *client.Config {
+func testConfig(t *testing.T) *dfsclientconfig.Config {
 	t.Helper()
-	return &client.Config{
+	return &dfsclientconfig.Config{
 		ChunkSize:            1024, // 1KB chunks for fast tests
 		MaxParallelUploads:   4,
 		MaxParallelDownloads: 4,
@@ -293,7 +293,7 @@ func TestUpload_NonExistentFile(t *testing.T) {
 
 func TestUpload_LargerFile_MultipleChunks(t *testing.T) {
 	cfg := testConfig(t)
-	cfg.ChunkSize = 512  // 512B chunks
+	cfg.ChunkSize = 512 // 512B chunks
 	cfg.MaxParallelUploads = 2
 
 	mockMeta := metadataclient.NewMockClient()
