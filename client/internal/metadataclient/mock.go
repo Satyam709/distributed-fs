@@ -38,10 +38,10 @@ type MockClient struct {
 	GetChunkLocationsErr error
 
 	// --- Call tracking ---
-	CreateFileCalls      []createFileCall
-	CommitChunkCalls     []commitChunkCall
-	GetFileCalls         []string
-	DeleteFileCalls      []string
+	CreateFileCalls  []createFileCall
+	CommitChunkCalls []commitChunkCall
+	GetFileCalls     []string
+	DeleteFileCalls  []string
 }
 
 type createFileCall struct {

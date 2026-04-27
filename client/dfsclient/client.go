@@ -60,6 +60,7 @@ func New(opts ...Option) (*Client, error) {
 	}, nil
 }
 
+/*
 // newFromDeps creates a Client with injected dependencies (for testing).
 func newFromDeps(cfg *dfsclientconfig.Config, meta metadataclient.Client, storage storageclient.Client, mgr *manifest.Manager) *Client {
 	return &Client{
@@ -69,6 +70,7 @@ func newFromDeps(cfg *dfsclientconfig.Config, meta metadataclient.Client, storag
 		manifests: mgr,
 	}
 }
+*/
 
 // Upload uploads a local file at filePath to the distributed FS under remoteName.
 // If progress is non-nil, it is called after each chunk completes or fails.
@@ -155,13 +157,13 @@ func (c *Client) UploadReader(ctx context.Context, r io.Reader, size int64, remo
 		return nil, fmt.Errorf("dfsclient: failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if _, err := io.Copy(tmpFile, r); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return nil, fmt.Errorf("dfsclient: failed to buffer upload data: %w", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	return c.Upload(ctx, tmpPath, remoteName, progress)
 }

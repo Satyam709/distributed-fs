@@ -119,7 +119,7 @@ func (s *UploadService) Upload(ctx context.Context, filePath string, fileName st
 	if err != nil {
 		return nil, fmt.Errorf("upload: failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// --- Step 5: Parallel upload ---
 	var (

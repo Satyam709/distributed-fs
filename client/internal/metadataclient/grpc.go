@@ -35,10 +35,10 @@ func (g *GRPCClient) Close() error {
 
 func (g *GRPCClient) CreateFile(ctx context.Context, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
 	resp, err := g.client.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileName: fileName,
-		FileSize: fileSize,
+		FileName:  fileName,
+		FileSize:  fileSize,
 		ChunkSize: chunkSize,
-		ChunkIds: chunkIDs,
+		ChunkIds:  chunkIDs,
 	})
 	if err != nil {
 		return "", nil, fmt.Errorf("metadataclient: CreateFile RPC failed: %w", err)

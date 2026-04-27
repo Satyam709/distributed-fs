@@ -14,7 +14,7 @@ func createTempFile(t *testing.T, size int64) string {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if size > 0 {
 		if err := f.Truncate(size); err != nil {

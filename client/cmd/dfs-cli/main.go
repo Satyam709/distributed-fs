@@ -56,7 +56,7 @@ func uploadCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			if err != nil {
 				log.Fatalf("Failed to create client: %v", err)
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 
 			progress := func(info dfsclient.ProgressInfo) {
 				if info.Err != nil {
@@ -113,7 +113,7 @@ func downloadCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			if err != nil {
 				log.Fatalf("Failed to create client: %v", err)
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 
 			progress := func(info dfsclient.ProgressInfo) {
 				if info.Err != nil {
@@ -157,7 +157,7 @@ func listCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			if err != nil {
 				log.Fatalf("Failed to create client: %v", err)
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 
 			files, err := c.List(context.Background(), prefix)
 			if err != nil {
@@ -170,10 +170,10 @@ func listCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "FILE ID\tNAME\tSIZE\tSTATUS\tCHUNKS")
-			fmt.Fprintln(w, "-------\t----\t----\t------\t------")
+			_, _ = fmt.Fprintln(w, "FILE ID\tNAME\tSIZE\tSTATUS\tCHUNKS")
+			_, _ = fmt.Fprintln(w, "-------\t----\t----\t------\t------")
 			for _, f := range files {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
 					f.FileID,
 					f.FileName,
 					formatBytes(f.FileSize),
@@ -181,7 +181,7 @@ func listCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 					f.ChunkCount,
 				)
 			}
-			w.Flush()
+			_ = w.Flush()
 		},
 	}
 	cmd.Flags().StringP("prefix", "p", "", "Filter files by name prefix")
@@ -205,7 +205,7 @@ func deleteCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			if err != nil {
 				log.Fatalf("Failed to create client: %v", err)
 			}
-			defer c.Close()
+			defer func() { _ = c.Close() }()
 
 			if err := c.Delete(context.Background(), fileID); err != nil {
 				log.Fatalf("Delete failed: %v", err)

@@ -71,7 +71,7 @@ func (s *DownloadService) Download(ctx context.Context, fileName string, outputP
 	if err != nil {
 		return nil, fmt.Errorf("download: failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	if err := outFile.Truncate(fileInfo.FileSize); err != nil {
 		return nil, fmt.Errorf("download: failed to pre-allocate file: %w", err)
@@ -127,8 +127,8 @@ func (s *DownloadService) Download(ctx context.Context, fileName string, outputP
 	if failed.Load() > 0 {
 		result.Error = fmt.Errorf("download: %d/%d chunks failed: %w", failed.Load(), total, firstErr)
 		// Clean up partial file on failure
-		outFile.Close()
-		os.Remove(outputPath)
+		_ = outFile.Close()
+		_ = os.Remove(outputPath)
 		return result, result.Error
 	}
 
