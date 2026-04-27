@@ -363,6 +363,7 @@ func (mfsm *MetadataFSM) handleCmdRegisterNode(req CommandRegisterNode) error {
 			FreeSpace:    req.FreeSpace,
 			RegisteredAt: req.CreatedAt,
 			UpdatedAt:    req.CreatedAt,
+			LastSeen:     req.CreatedAt, // prevent watcher from marking as dead before first heartbeat
 			Status:       NodeStatusAlive,
 			ChunkCount:   req.ChunkCount,
 		}
