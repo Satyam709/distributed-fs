@@ -261,7 +261,7 @@ func (c *Client) Delete(ctx context.Context, fileID string) error {
 func (c *Client) Close() error {
 	var firstErr error
 
-	if err := c.metadata.Close(); err != nil && firstErr == nil {
+	if err := c.metadata.Close(); err != nil {
 		firstErr = fmt.Errorf("dfsclient: failed to close metadata connection: %w", err)
 	}
 	if err := c.storage.Close(); err != nil && firstErr == nil {
