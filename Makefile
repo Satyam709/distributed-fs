@@ -61,7 +61,7 @@ pb-fmt-check:
 lint: go-lint pb-lint
 
 go-lint: check-golangci-lint
-	golangci-lint run ./...
+	golangci-lint run --build-tags=integration ./...
 
 pb-lint: check-buf
 	buf lint

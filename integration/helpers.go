@@ -208,16 +208,16 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 // stop storage nodes, then stop metadata.
 func (c *TestCluster) Shutdown() {
 	for _, conn := range c.StorageConns {
-		conn.Close()
+		_ = conn.Close()
 	}
 	if c.MetaConn != nil {
-		c.MetaConn.Close()
+		_ = c.MetaConn.Close()
 	}
 	for _, n := range c.StorageNodes {
 		n.Stop()
 	}
 	if c.MetaApp != nil {
-		c.MetaApp.Shutdown(context.Background())
+		_ = c.MetaApp.Shutdown(context.Background())
 	}
 	// Run registered cleanups in LIFO order.
 	for i := len(c.cleanups) - 1; i >= 0; i-- {
@@ -236,7 +236,7 @@ func DialStorage(t *testing.T, addr string) pb_storage.StorageServiceClient {
 	if err != nil {
 		t.Fatalf("dial storage %s: %v", addr, err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 	return pb_storage.NewStorageServiceClient(conn)
 }
 

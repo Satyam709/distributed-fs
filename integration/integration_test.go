@@ -48,7 +48,7 @@ func (s *testingTShim) TempDir() string {
 	if err != nil {
 		s.Fatalf("TempDir: %v", err)
 	}
-	s.cleanups = append(s.cleanups, func() { os.RemoveAll(dir) })
+	s.cleanups = append(s.cleanups, func() { _ = os.RemoveAll(dir) })
 	return dir
 }
 func (s *testingTShim) Cleanup(f func()) { s.cleanups = append(s.cleanups, f) }
