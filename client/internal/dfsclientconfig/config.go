@@ -1,9 +1,18 @@
 package dfsclientconfig
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
+)
+
+// Size guardrails — enforced by Validate().
+const (
+	MinChunkSize = 64 * 1024        // 64 KB
+	MaxChunkSize = 64 * 1024 * 1024 // 64 MB
+	MinFrameSize = 4 * 1024         // 4 KB
+	MaxFrameSize = 4 * 1024 * 1024  // 4 MB (gRPC default max message size)
 )
 
 type Config struct {
@@ -29,6 +38,20 @@ func DefaultConfig() *Config {
 		RetryAttempts:        3,         // Default 3 retries per chunk
 		FrameSize:            32 * 1024, // Default 32KB frames
 	}
+}
+
+// Validate checks that ChunkSize and FrameSize are within acceptable
+// ranges. Called automatically by the SDK constructor.
+func (c *Config) Validate() error {
+	if c.ChunkSize < MinChunkSize || c.ChunkSize > MaxChunkSize {
+		return fmt.Errorf("dfsclientconfig: chunk_size %d out of range [%d, %d]",
+			c.ChunkSize, MinChunkSize, MaxChunkSize)
+	}
+	if c.FrameSize < MinFrameSize || c.FrameSize > MaxFrameSize {
+		return fmt.Errorf("dfsclientconfig: frame_size %d out of range [%d, %d]",
+			c.FrameSize, MinFrameSize, MaxFrameSize)
+	}
+	return nil
 }
 
 // LoadFromEnv allows overriding defaults via environment variables.

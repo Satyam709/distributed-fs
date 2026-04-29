@@ -141,7 +141,6 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			name: "filesize mismatch",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{})
-				m.fileIndex["file-1"].CheckSum = checksum
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 999, Checksum: checksum},
 			wantErr: true,
@@ -151,24 +150,10 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			},
 		},
 		{
-			name: "checksum mismatch",
-			setup: func(m *MetadataFSM) {
-				seedFile(t, m, "file-1", "f.bin", []string{})
-				m.fileIndex["file-1"].CheckSum = checksum
-			},
-			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: []byte{0xFF}},
-			wantErr: true,
-			assertPost: func(t *testing.T, m *MetadataFSM) {
-				f, _ := m.GetFile("file-1")
-				assert.Equal(t, FileStatusCreating, f.Status)
-			},
-		},
-		{
 			name: "chunk not in complete status",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{"ck-1"})
-				m.fileIndex["file-1"].CheckSum = checksum
-				// chunk is still in RequestAllocation status
+				// chunk is still in Allocated status
 			},
 			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: checksum},
 			wantErr: true,
@@ -178,10 +163,9 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			},
 		},
 		{
-			name: "successful commit with all chunks complete",
+			name: "successful commit stores checksum",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-1", "f.bin", []string{"ck-1", "ck-2"})
-				m.fileIndex["file-1"].CheckSum = checksum
 				m.chunkRegistry["ck-1"].Status = ChunkStatusComplete
 				m.chunkRegistry["ck-2"].Status = ChunkStatusComplete
 			},
@@ -190,13 +174,29 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			assertPost: func(t *testing.T, m *MetadataFSM) {
 				f, _ := m.GetFile("file-1")
 				assert.Equal(t, FileStatusComplete, f.Status)
+				assert.Equal(t, checksum, f.CheckSum,
+					"CommitFile must store the provided checksum in FileRecord")
+			},
+		},
+		{
+			name: "commit with nil checksum still transitions status",
+			setup: func(m *MetadataFSM) {
+				seedFile(t, m, "file-1", "f.bin", []string{"ck-1"})
+				m.chunkRegistry["ck-1"].Status = ChunkStatusComplete
+			},
+			req:     CommandCommitFile{FileID: "file-1", FileSize: 100, Checksum: nil},
+			wantErr: false,
+			assertPost: func(t *testing.T, m *MetadataFSM) {
+				f, _ := m.GetFile("file-1")
+				assert.Equal(t, FileStatusComplete, f.Status)
+				assert.Nil(t, f.CheckSum,
+					"nil checksum should be stored as nil")
 			},
 		},
 		{
 			name: "commit file with zero chunks",
 			setup: func(m *MetadataFSM) {
 				seedFile(t, m, "file-e", "empty.bin", []string{})
-				m.fileIndex["file-e"].CheckSum = checksum
 				m.fileIndex["file-e"].FileSize = 0
 			},
 			req:     CommandCommitFile{FileID: "file-e", FileSize: 0, Checksum: checksum},
@@ -204,6 +204,7 @@ func TestHandleCmdCommitFile(t *testing.T) {
 			assertPost: func(t *testing.T, m *MetadataFSM) {
 				f, _ := m.GetFile("file-e")
 				assert.Equal(t, FileStatusComplete, f.Status)
+				assert.Equal(t, checksum, f.CheckSum)
 			},
 		},
 	}

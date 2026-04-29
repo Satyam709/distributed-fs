@@ -44,6 +44,10 @@ func New(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("dfsclient: at least one metadata address is required")
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("dfsclient: %w", err)
+	}
+
 	meta, err := metadataclient.NewGRPCClient(cfg.MetadataAddrs[0])
 	if err != nil {
 		return nil, fmt.Errorf("dfsclient: failed to connect to metadata service: %w", err)

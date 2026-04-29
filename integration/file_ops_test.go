@@ -29,19 +29,21 @@ func TestCreateFileDuplicate(t *testing.T) {
 
 	// First creation succeeds.
 	_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "duplicate.txt",
-		FileSize: 42,
-		ChunkIds: []string{"dup-chunk-1"},
+		FileId:    fileID,
+		FileName:  "duplicate.txt",
+		FileSize:  42,
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{"dup-chunk-1"},
 	})
 	require.NoError(t, err, "first CreateFile should succeed")
 
 	// Second creation with same ID fails.
 	_, err = testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "duplicate-2.txt",
-		FileSize: 100,
-		ChunkIds: []string{"dup-chunk-2"},
+		FileId:    fileID,
+		FileName:  "duplicate-2.txt",
+		FileSize:  100,
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{"dup-chunk-2"},
 	})
 	require.Error(t, err, "duplicate CreateFile should fail")
 	st, ok := status.FromError(err)
@@ -59,10 +61,11 @@ func TestListFiles(t *testing.T) {
 	ids := []string{"list-file-a", "list-file-b"}
 	for _, id := range ids {
 		_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-			FileId:   id,
-			FileName: id + ".txt",
-			FileSize: 1,
-			ChunkIds: []string{id + "-chunk"},
+			FileId:    id,
+			FileName:  id + ".txt",
+			FileSize:  1,
+			ChunkSize: 4 * 1024 * 1024,
+			ChunkIds:  []string{id + "-chunk"},
 		})
 		require.NoError(t, err)
 	}
@@ -93,10 +96,11 @@ func TestDeleteFile(t *testing.T) {
 
 	// Create.
 	_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "to-delete.txt",
-		FileSize: 1,
-		ChunkIds: []string{"delete-me-chunk"},
+		FileId:    fileID,
+		FileName:  "to-delete.txt",
+		FileSize:  1,
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{"delete-me-chunk"},
 	})
 	require.NoError(t, err)
 
@@ -155,10 +159,11 @@ func TestGetChunkLocationsAfterUpload(t *testing.T) {
 
 	// CreateFile.
 	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "locations.dat",
-		FileSize: int64(len(payload)),
-		ChunkIds: []string{chunkID},
+		FileId:    fileID,
+		FileName:  "locations.dat",
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{chunkID},
 	})
 	require.NoError(t, err)
 	pl := createResp.Placements[0]
@@ -200,10 +205,11 @@ func TestChunkVerifyAfterUpload(t *testing.T) {
 
 	// CreateFile.
 	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "verify.dat",
-		FileSize: int64(len(payload)),
-		ChunkIds: []string{chunkID},
+		FileId:    fileID,
+		FileName:  "verify.dat",
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{chunkID},
 	})
 	require.NoError(t, err)
 	pl := createResp.Placements[0]

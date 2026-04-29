@@ -464,6 +464,7 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 		FileID:    req.FileID,
 		Filename:  req.FileName,
 		FileSize:  req.FileSize,
+		ChunkSize: req.ChunkSize,
 		ChunkIDs:  req.ChunkIDs,
 		Status:    FileStatusCreating,
 		CreatedAt: req.CreatedAt,
@@ -507,8 +508,11 @@ func (mfsm *MetadataFSM) handleCmdCreateFile(req CommandCreateFile) error {
 // handleCmdCommitFile transitions a file from "creating" to "complete".
 // Before committing it validates:
 //   - File size matches the original declaration.
-//   - Checksum matches the original declaration.
 //   - Every chunk belonging to this file is in ChunkStatusComplete.
+//
+// The whole-file checksum is stored at commit time — it is NOT known at
+// CreateFile time (the file hasn't been uploaded yet), so CommitFile is
+// the authoritative source for the file-level checksum.
 //
 // If any validation fails the file status is left unchanged and an
 // error is returned.
@@ -520,9 +524,6 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 
 	if file.FileSize != req.FileSize {
 		return errors.New("cmdCommitFile: filesize mismatch")
-	}
-	if !bytes.Equal(file.CheckSum, req.Checksum) {
-		return errors.New("cmdCommitFile: checksum mismatch")
 	}
 
 	// Validate that every chunk has been fully replicated and committed.
@@ -547,6 +548,7 @@ func (mfsm *MetadataFSM) handleCmdCommitFile(req CommandCommitFile) error {
 
 	mfsm.fiMutex.Lock()
 	defer mfsm.fiMutex.Unlock()
+	file.CheckSum = req.Checksum
 	file.Status = FileStatusComplete
 	mfsm.logger.Debug("Commited file", "id", file.FileID)
 	return nil
