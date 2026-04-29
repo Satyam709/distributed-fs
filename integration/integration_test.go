@@ -37,7 +37,7 @@ type testingTShim struct {
 	cleanups []func()
 }
 
-func (s *testingTShim) Helper()                        {}
+func (s *testingTShim) Helper()                         {}
 func (s *testingTShim) Logf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
 func (s *testingTShim) Fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)

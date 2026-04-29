@@ -41,7 +41,7 @@ check-golangci-lint:
 fmt: go-fmt pb-fmt
 
 go-fmt:
-	go fmt ./...
+	gofmt -w .
 
 pb-fmt:
 	buf format -w

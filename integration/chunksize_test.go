@@ -66,8 +66,8 @@ func TestChunkSizePersistedDifferentValues(t *testing.T) {
 		fileID    string
 		chunkSize int64
 	}{
-		{"cs-diff-file-1mb", 1 * 1024 * 1024},  // 1 MB
-		{"cs-diff-file-8mb", 8 * 1024 * 1024},  // 8 MB
+		{"cs-diff-file-1mb", 1 * 1024 * 1024},   // 1 MB
+		{"cs-diff-file-8mb", 8 * 1024 * 1024},   // 8 MB
 		{"cs-diff-file-16mb", 16 * 1024 * 1024}, // 16 MB
 	}
 
@@ -133,7 +133,9 @@ func TestChunkSizeInListFiles(t *testing.T) {
 //
 // The key assertion: metadata must return the same chunk_size that was sent
 // in CreateFile, so the download path can compute:
-//   offset = chunkIndex * chunkSize
+//
+//	offset = chunkIndex * chunkSize
+//
 // If chunk_size is 0, all offsets collapse to 0 → data corruption.
 func TestMultiChunkDownloadOffsetCorrectness(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -278,9 +280,9 @@ func TestCreateFileAcceptsValidChunkSizeRange(t *testing.T) {
 		fileID    string
 		chunkSize int64
 	}{
-		{"min_64KB", "cs-min-ok", 64 * 1024},            // 64 KB — minimum
-		{"1MB", "cs-1mb-ok", 1 * 1024 * 1024},           // 1 MB
-		{"max_64MB", "cs-max-ok", 64 * 1024 * 1024},     // 64 MB — maximum
+		{"min_64KB", "cs-min-ok", 64 * 1024},        // 64 KB — minimum
+		{"1MB", "cs-1mb-ok", 1 * 1024 * 1024},       // 1 MB
+		{"max_64MB", "cs-max-ok", 64 * 1024 * 1024}, // 64 MB — maximum
 	}
 
 	for _, tc := range tests {
