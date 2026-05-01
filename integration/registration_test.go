@@ -27,10 +27,11 @@ func TestStorageNodesAutoRegistered(t *testing.T) {
 	// CreateFile needs live nodes for placement; if nodes didn't register
 	// this will fail with "error getting placement".
 	resp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   "reg-probe-file",
-		FileName: "probe.txt",
-		FileSize: 100,
-		ChunkIds: []string{"reg-probe-chunk-1"},
+		FileId:    "reg-probe-file",
+		FileName:  "probe.txt",
+		FileSize:  100,
+		ChunkSize: 4 * 1024 * 1024, // 4 MB
+		ChunkIds:  []string{"reg-probe-chunk-1"},
 	})
 	require.NoError(t, err, "CreateFile should succeed when storage nodes are registered")
 	require.Len(t, resp.Placements, 1, "expected 1 chunk placement")

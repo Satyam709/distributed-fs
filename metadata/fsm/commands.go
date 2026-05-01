@@ -129,6 +129,7 @@ type CommandCreateFile struct {
 	FileName  string    `json:"filename"`
 	ChunkIDs  []string  `json:"chunk_ids"`
 	FileSize  uint64    `json:"filesize"`
+	ChunkSize uint64    `json:"chunk_size"`
 	Checksum  []byte    `json:"checksum"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -208,11 +209,26 @@ type CommandAddChunkReplica struct {
 // This is the single chokepoint for all state-mutating operations.
 // Only the Raft leader may call Propose; followers must reject writes
 // and redirect clients to the current leader.
+//
+// The function checks both the Raft-level error (transport/timeout) and
+// the FSM Apply() return value. If the FSM handler returns an error it
+// is surfaced to the caller — otherwise mutations could be silently
+// rejected while the gRPC handler reports success.
 func Propose(raft *raft.Raft, cmd MetadataCommand) error {
 	data, err := json.Marshal(cmd)
 	if err != nil {
 		return err
 	}
 	f := raft.Apply(data, 5*time.Second)
-	return f.Error()
+	if err := f.Error(); err != nil {
+		return err
+	}
+	// f.Response() returns the value from FSM.Apply(). By convention
+	// our handlers return nil on success or an error on failure.
+	if resp := f.Response(); resp != nil {
+		if fsmErr, ok := resp.(error); ok {
+			return fsmErr
+		}
+	}
+	return nil
 }

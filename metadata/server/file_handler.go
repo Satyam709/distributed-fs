@@ -20,6 +20,21 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		return nil, status.Errorf(codes.AlreadyExists, "file with ID '%s' already exists", req.FileId)
 	}
 
+	// Validate chunk_size: must be within [64KB, 64MB]
+	const (
+		minChunkSize = 64 * 1024        // 64 KB
+		maxChunkSize = 64 * 1024 * 1024 // 64 MB
+	)
+	if req.ChunkSize <= 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "chunk_size must be positive, got %d", req.ChunkSize)
+	}
+	if req.ChunkSize < minChunkSize {
+		return nil, status.Errorf(codes.InvalidArgument, "chunk_size %d is below minimum %d (64 KB)", req.ChunkSize, minChunkSize)
+	}
+	if req.ChunkSize > maxChunkSize {
+		return nil, status.Errorf(codes.InvalidArgument, "chunk_size %d exceeds maximum %d (64 MB)", req.ChunkSize, maxChunkSize)
+	}
+
 	// get the placements for chunks of file
 	var aliveNodes []fsm.NodeEntry
 	if aliveNodes, err = h.deps.FSM.GetLiveNodes(); err != nil {
@@ -59,6 +74,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 		FileID:    req.FileId,
 		FileName:  req.FileName,
 		FileSize:  uint64(req.FileSize),
+		ChunkSize: uint64(req.ChunkSize),
 		ChunkIDs:  req.ChunkIds,
 		CreatedAt: time.Now(),
 	})

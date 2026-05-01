@@ -37,7 +37,7 @@ type testingTShim struct {
 	cleanups []func()
 }
 
-func (s *testingTShim) Helper()                        {}
+func (s *testingTShim) Helper()                         {}
 func (s *testingTShim) Logf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
 func (s *testingTShim) Fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
@@ -48,7 +48,7 @@ func (s *testingTShim) TempDir() string {
 	if err != nil {
 		s.Fatalf("TempDir: %v", err)
 	}
-	s.cleanups = append(s.cleanups, func() { os.RemoveAll(dir) })
+	s.cleanups = append(s.cleanups, func() { _ = os.RemoveAll(dir) })
 	return dir
 }
 func (s *testingTShim) Cleanup(f func()) { s.cleanups = append(s.cleanups, f) }

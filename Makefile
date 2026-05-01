@@ -10,8 +10,8 @@ build-storage:   # build storage node binary
 	go build -o bin/storage ./storage/cmd
 build-metadata:  # build metadata node binary
 	go build -o bin/metadata ./metadata/cmd
-build-client:    # build client binary
-	go build -o bin/client ./client/cmd
+build-dfs-cli:    # build client binary
+	go build -o bin/client/dfs-cli ./client/cmd/dfs-cli
 build-all: 	build-storage build-client build-metadata      # all three
 test-storage:    # run storage package tests
 
@@ -41,7 +41,7 @@ check-golangci-lint:
 fmt: go-fmt pb-fmt
 
 go-fmt:
-	go fmt ./...
+	gofmt -w .
 
 pb-fmt:
 	buf format -w
@@ -61,7 +61,7 @@ pb-fmt-check:
 lint: go-lint pb-lint
 
 go-lint: check-golangci-lint
-	golangci-lint run ./...
+	golangci-lint run --build-tags=integration ./...
 
 pb-lint: check-buf
 	buf lint

@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -35,10 +36,11 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 
 	// ── 1. CreateFile → get placement ──
 	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: fileName,
-		FileSize: int64(len(payload)),
-		ChunkIds: []string{chunkID},
+		FileId:    fileID,
+		FileName:  fileName,
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024, // 4 MB
+		ChunkIds:  []string{chunkID},
 	})
 	require.NoError(t, err, "CreateFile should succeed")
 	require.Len(t, createResp.Placements, 1)
@@ -63,13 +65,12 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 	// Give the storage node a moment to async-commit to metadata.
 	time.Sleep(1 * time.Second)
 
-	// ── 3. CommitFile ──
-	// NOTE: The FSM's CreateFile doesn't set a file-level CheckSum, so
-	// CommitFile must be called with nil checksum to match.
+	// ── 3. CommitFile with whole-file checksum ──
+	fileHash := sha256.Sum256(payload)
 	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
-		Checksum: nil, // matches the nil CheckSum set during CreateFile
+		Checksum: fileHash[:],
 	})
 	require.NoError(t, err, "CommitFile should succeed")
 
@@ -111,10 +112,11 @@ func TestUploadWithReplication(t *testing.T) {
 
 	// ── 1. CreateFile ──
 	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "replicated.bin",
-		FileSize: int64(len(payload)),
-		ChunkIds: []string{chunkID},
+		FileId:    fileID,
+		FileName:  "replicated.bin",
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024, // 4 MB
+		ChunkIds:  []string{chunkID},
 	})
 	require.NoError(t, err)
 	require.Len(t, createResp.Placements, 1)
@@ -166,10 +168,11 @@ func TestUploadMultiChunkFile(t *testing.T) {
 
 	// ── 1. CreateFile with 3 chunks ──
 	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
-		FileId:   fileID,
-		FileName: "multi.dat",
-		FileSize: totalSize,
-		ChunkIds: chunkIDs,
+		FileId:    fileID,
+		FileName:  "multi.dat",
+		FileSize:  totalSize,
+		ChunkSize: 4 * 1024 * 1024, // 4 MB
+		ChunkIds:  chunkIDs,
 	})
 	require.NoError(t, err)
 	require.Len(t, createResp.Placements, 3, "expected 3 chunk placements")
@@ -187,11 +190,16 @@ func TestUploadMultiChunkFile(t *testing.T) {
 
 	time.Sleep(1 * time.Second) // let commits propagate
 
-	// ── 3. CommitFile (nil checksum to match FSM behavior) ──
+	// ── 3. CommitFile with whole-file checksum ──
+	var allPayloads []byte
+	for _, p := range payloads {
+		allPayloads = append(allPayloads, p...)
+	}
+	fileHash := sha256.Sum256(allPayloads)
 	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: totalSize,
-		Checksum: nil,
+		Checksum: fileHash[:],
 	})
 	require.NoError(t, err)
 
