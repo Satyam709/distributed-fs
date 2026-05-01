@@ -74,20 +74,22 @@ echo "services:"
 for i in $(seq 1 "$METADATA_NODE_COUNT"); do
     GRPC_PORT=$((4000 + i))
     RAFT_PORT=$((5000 + i))
+    
+    PEER_ADDRS=""
+    for j in $(seq 1 "$METADATA_NODE_COUNT"); do
+        if [ "$j" -ne "$i" ]; then
+            RAFT_PORT_PEER=$((5000 + j))
+            if [ -n "$PEER_ADDRS" ]; then
+                PEER_ADDRS="${PEER_ADDRS},"
+            fi
+            PEER_ADDRS="${PEER_ADDRS}metadata-${j}:metadata-${j}:${RAFT_PORT_PEER}"
+        fi
+    done
+    
     if [ "$i" -eq 1 ]; then
         IS_BOOTSTRAP="true"
-        PEER_ADDRS=""
     else
         IS_BOOTSTRAP="false"
-        PEER_ADDRS=""
-        for j in $(seq 1 "$METADATA_NODE_COUNT"); do
-            if [ "$j" -ne "$i" ]; then
-                if [ -n "$PEER_ADDRS" ]; then
-                    PEER_ADDRS="${PEER_ADDRS},"
-                fi
-                PEER_ADDRS="${PEER_ADDRS}metadata-${j}:5001"
-            fi
-        done
     fi
 
     echo "  metadata-$i:"
