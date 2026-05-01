@@ -107,6 +107,9 @@ func (c *NodeConfig) Validate() error {
 	if c.RaftDir == "" {
 		return errors.New("config: RaftDir is required")
 	}
+	if err := os.MkdirAll(c.RaftDir, 0755); err != nil {
+		return fmt.Errorf("failed to create raft dir %s: %w", c.RaftDir, err)
+	}
 	return nil
 }
 
