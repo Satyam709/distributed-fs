@@ -5,7 +5,7 @@ COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 METADATA_NODE_COUNT=1
 STORAGE_NODE_COUNT=3
-STORAGE_METADATA_ADDR="metadata-1:3000"
+STORAGE_METADATA_ADDR="metadata-1:4001"
 IMAGE_PREFIX="devcon"
 METADATA_BUILD_DIR=".."
 STORAGE_BUILD_DIR=".."
@@ -102,7 +102,8 @@ for i in $(seq 1 "$METADATA_NODE_COUNT"); do
     echo "    environment:"
     echo "      - METADATA_NODE_ID=metadata-$i"
     echo "      - METADATA_GRPC_ADDR=:$GRPC_PORT"
-    echo "      - METADATA_RAFT_ADDR=:$RAFT_PORT"
+    echo "      - METADATA_RAFT_ADDR=0.0.0.0:$RAFT_PORT"
+    echo "      - METADATA_RAFT_ADVERTISE=metadata-${i}:$RAFT_PORT"
     echo "      - METADATA_RAFT_DIR=/metadata-node/data/raft"
     echo "      - METADATA_BOOTSTRAP=$IS_BOOTSTRAP"
     if [ -n "$PEER_ADDRS" ]; then

@@ -24,7 +24,12 @@ func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
 	raftConfig.SnapshotInterval = r.Config.SnapshotInterval
 	raftConfig.SnapshotThreshold = r.Config.SnapshotThreshold
 
-	addr, err := net.ResolveTCPAddr("tcp", r.Config.RaftAddr)
+	advertiseAddr := r.Config.RaftAdvertise
+	if advertiseAddr == "" {
+		advertiseAddr = r.Config.RaftAddr
+	}
+
+	addr, err := net.ResolveTCPAddr("tcp", advertiseAddr)
 	if err != nil {
 		return nil, fmt.Errorf("resolve raft addr: %w", err)
 	}
@@ -65,10 +70,14 @@ func NewRaftNode(r RaftConfig) (*raft.Raft, error) {
 	// set NodeConfig.Bootstrap = true only on first ever startup
 
 	if r.Config.Bootstrap {
+		bootstrapAddr := advertiseAddr
+		if bootstrapAddr == "" {
+			bootstrapAddr = r.Config.RaftAddr
+		}
 		servers := []raft.Server{
 			{
 				ID:      raft.ServerID(r.Config.NodeID),
-				Address: raft.ServerAddress(r.Config.RaftAddr),
+				Address: raft.ServerAddress(bootstrapAddr),
 			},
 		}
 
