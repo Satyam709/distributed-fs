@@ -12,6 +12,7 @@ STORAGE_BUILD_DIR=".."
 METADATA_DOCKERFILE="metadata/Dockerfile"
 STORAGE_DOCKERFILE="storage/Dockerfile"
 CLUSTER_DATA_DIR="./cluster-data"
+CLIENT_CONFIG_FILE=""
 
 usage() {
     echo "Usage: $0 [OPTIONS] [docker-compose-args]"
@@ -19,8 +20,9 @@ usage() {
     echo "Options:"
     echo "  -m, --metadata-count N    Number of metadata nodes (default: 1)"
     echo "  -s, --storage-count N     Number of storage nodes (default: 3)"
-    echo "  -a, --metadata-addr      Metadata service address (default: metadata-1:3000)"
+    echo "  -a, --metadata-addr      Metadata service address (default: metadata-1:4001)"
     echo "  -i, --image-prefix       Image prefix (default: devcon)"
+    echo "  -c, --client-config FILE  Write client .env with METADATA_ADDRS (default: ./cluster-data/dfsclient.env)"
     echo "  -h, --help              Show this help message"
     echo ""
     echo "Examples:"
@@ -29,6 +31,7 @@ usage() {
     echo "  $0 -m 3 -s 5 up -d"
     echo "  $0 -m 3 up -d"
     echo "  $0 -i myprefix up -d    # Custom image prefix"
+    echo "  $0 -c up -d             # Write client config and start"
     exit 0
 }
 
@@ -49,6 +52,13 @@ while [[ $# -gt 0 ]]; do
         -i|--image-prefix)
             IMAGE_PREFIX="$2"
             shift 2
+            ;;
+        -c|--client-config)
+            case "${2-}" in
+                ""|-*|up|down|ps|logs|restart|start|stop|pause|unpause) CLIENT_CONFIG_FILE="$CLUSTER_DATA_DIR/dfsclient.env" ;;
+                *) CLIENT_CONFIG_FILE="$2"; shift ;;
+            esac
+            shift
             ;;
         -h|--help)
             usage
@@ -151,6 +161,26 @@ echo "    name: dfs-cluster"
 } > "$COMPOSE_FILE"
 
 echo "Generated $COMPOSE_FILE"
+
+if [[ -n "$CLIENT_CONFIG_FILE" ]]; then
+    ADDRS="["
+    for i in $(seq 1 "$METADATA_NODE_COUNT"); do
+        GRPC_PORT=$((4000 + i))
+        if [[ $i -gt 1 ]]; then
+            ADDRS="${ADDRS}, "
+        fi
+        ADDRS="${ADDRS}\"localhost:${GRPC_PORT}\""
+    done
+    ADDRS="${ADDRS}]"
+    mkdir -p "$(dirname "$CLIENT_CONFIG_FILE")"
+    cat > "$CLIENT_CONFIG_FILE" <<EOF
+{
+  "metadata_addrs": $ADDRS
+}
+EOF
+    echo "Wrote client config: $CLIENT_CONFIG_FILE"
+    echo "  metadata_addrs: localhost:$(seq -s ',localhost:' 4002 $((4000 + METADATA_NODE_COUNT)))"
+fi
 
 if [[ $# -eq 0 ]]; then
     echo "No docker-compose args provided. Run manually with:"
