@@ -35,6 +35,8 @@ type MetadataFSM struct {
 	nodeRegistry      map[string]*NodeEntry // node_id → storage-node info + status
 	jrMutex           sync.RWMutex
 	repairJobRegistry map[string]*RepairJob // job_id → repair job state
+	mnMutex           sync.RWMutex
+	mdNodeRegistry    map[string]*MetadataNodeEntry // raft_addr → metadata node info
 }
 
 var _ raft.FSMSnapshot = &MetadataFSMSnapshot{}
@@ -44,6 +46,7 @@ type MetadataFSMSnapshot struct {
 	ChunkRegistry     map[string]ChunkRecord `json:"chunk_registry"`
 	NodeRegistry      map[string]NodeEntry   `json:"node_registry"`
 	RepairJobRegistry map[string]RepairJob   `json:"repairjob_registry"`
+	MDNodeRegistry    map[string]MetadataNodeEntry `json:"md_node_registry"`
 }
 
 // RestoreFSM constructs a new MetadataFSM from the snapshot's deep-copied,
@@ -56,6 +59,7 @@ func (fsms *MetadataFSMSnapshot) RestoreFSM(logger *logging.CLogger) *MetadataFS
 		chunkRegistry:     make(map[string]*ChunkRecord, len(fsms.ChunkRegistry)),
 		nodeRegistry:      make(map[string]*NodeEntry, len(fsms.NodeRegistry)),
 		repairJobRegistry: make(map[string]*RepairJob, len(fsms.RepairJobRegistry)),
+		mdNodeRegistry:    make(map[string]*MetadataNodeEntry, len(fsms.MDNodeRegistry)),
 	}
 
 	for k, v := range fsms.FileIndex {
@@ -73,6 +77,10 @@ func (fsms *MetadataFSMSnapshot) RestoreFSM(logger *logging.CLogger) *MetadataFS
 	for k, v := range fsms.RepairJobRegistry {
 		copy := v
 		newFSM.repairJobRegistry[k] = &copy
+	}
+	for k, v := range fsms.MDNodeRegistry {
+		copy := v
+		newFSM.mdNodeRegistry[k] = &copy
 	}
 
 	return newFSM
@@ -115,10 +123,11 @@ func (fsms *MetadataFSMSnapshot) Release() {
 
 // Sentinel errors returned by registry lookups.
 var (
-	ErrNodeNotFound  = errors.New("node does not exist")
-	ErrFileNotFound  = errors.New("file does not exist")
-	ErrChunkNotFound = errors.New("chunk does not exist")
-	ErrJobNotFound   = errors.New("job does not exist")
+	ErrNodeNotFound         = errors.New("node does not exist")
+	ErrFileNotFound         = errors.New("file does not exist")
+	ErrChunkNotFound        = errors.New("chunk does not exist")
+	ErrJobNotFound          = errors.New("job does not exist")
+	ErrMetadataNodeNotFound = errors.New("metadata node does not exist")
 )
 
 // NewEmptyMetadataFsm creates a MetadataFSM with empty registries.
@@ -131,6 +140,7 @@ func NewEmptyMetadataFsm(logger *logging.CLogger) *MetadataFSM {
 		chunkRegistry:     map[string]*ChunkRecord{},
 		nodeRegistry:      map[string]*NodeEntry{},
 		repairJobRegistry: map[string]*RepairJob{},
+		mdNodeRegistry:    map[string]*MetadataNodeEntry{},
 	}
 }
 
@@ -254,6 +264,20 @@ func (mfsm *MetadataFSM) Apply(rlog *raft.Log) interface{} {
 		}
 		return mfsm.handleCmdAddChunkReplica(req)
 
+	case CmdRegisterMetadataNode:
+		var req CommandRegisterMetadataNode
+		if err := json.Unmarshal(cmd.Payload, &req); err != nil {
+			return err
+		}
+		return mfsm.handleCmdRegisterMetadataNode(req)
+
+	case CmdDeregisterMetadataNode:
+		var req CommandDeregisterMetadataNode
+		if err := json.Unmarshal(cmd.Payload, &req); err != nil {
+			return err
+		}
+		return mfsm.handleCmdDeregisterMetadataNode(req)
+
 	default:
 		mfsm.logger.Error("Apply: unknown command type", nil, "type", cmd.Type)
 		return errors.New("unknown command type")
@@ -270,22 +294,26 @@ func (mfsm *MetadataFSM) Snapshot() (raft.FSMSnapshot, error) {
 	mfsm.fiMutex.RLock()
 	mfsm.jrMutex.RLock()
 	mfsm.nrMutex.RLock()
+	mfsm.mnMutex.RLock()
 
 	fiCopy := utils.DeepCopy(mfsm.fileIndex)
 	crCopy := utils.DeepCopy(mfsm.chunkRegistry)
 	nrCopy := utils.DeepCopy(mfsm.nodeRegistry)
 	jrCopy := utils.DeepCopy(mfsm.repairJobRegistry)
+	mnCopy := utils.DeepCopy(mfsm.mdNodeRegistry)
 
 	mfsm.crMutex.RUnlock()
 	mfsm.fiMutex.RUnlock()
 	mfsm.jrMutex.RUnlock()
 	mfsm.nrMutex.RUnlock()
+	mfsm.mnMutex.RUnlock()
 
 	snap := &MetadataFSMSnapshot{
 		FileIndex:         fiCopy,
 		ChunkRegistry:     crCopy,
 		NodeRegistry:      nrCopy,
 		RepairJobRegistry: jrCopy,
+		MDNodeRegistry:    mnCopy,
 	}
 
 	return snap, nil
@@ -330,6 +358,10 @@ func (mfsm *MetadataFSM) Restore(snapshot io.ReadCloser) error {
 	mfsm.jrMutex.Lock()
 	mfsm.repairJobRegistry = restored.repairJobRegistry
 	mfsm.jrMutex.Unlock()
+
+	mfsm.mnMutex.Lock()
+	mfsm.mdNodeRegistry = restored.mdNodeRegistry
+	mfsm.mnMutex.Unlock()
 
 	return nil
 }
@@ -705,6 +737,22 @@ func (mfsm *MetadataFSM) handleCmdAddChunkReplica(req CommandAddChunkReplica) er
 	return nil
 }
 
+func (mfsm *MetadataFSM) handleCmdRegisterMetadataNode(req CommandRegisterMetadataNode) error {
+	entry := &MetadataNodeEntry{
+		NodeID:   req.NodeID,
+		RaftAddr: req.RaftAddr,
+		GrpcAddr: req.GrpcAddr,
+	}
+	return upsert(&mfsm.mnMutex, mfsm.mdNodeRegistry, req.RaftAddr, entry)
+}
+
+func (mfsm *MetadataFSM) handleCmdDeregisterMetadataNode(req CommandDeregisterMetadataNode) error {
+	mfsm.mnMutex.Lock()
+	defer mfsm.mnMutex.Unlock()
+	delete(mfsm.mdNodeRegistry, req.NodeID)
+	return nil
+}
+
 // Internal helpers
 
 // upsert inserts or overwrites an entry in the given registry map.
@@ -889,6 +937,19 @@ func (mfsm *MetadataFSM) GetNodeCount() int {
 	mfsm.nrMutex.RLock()
 	defer mfsm.nrMutex.RUnlock()
 	return len(mfsm.nodeRegistry)
+}
+
+// GetMetadataNodeByRaftAddr looks up the grpc address for a metadata node
+// given its raft address. Used by leaderRedirect() to build client-usable
+// redirect responses.
+func (mfsm *MetadataFSM) GetMetadataNodeByRaftAddr(raftAddr string) (MetadataNodeEntry, error) {
+	mfsm.mnMutex.RLock()
+	defer mfsm.mnMutex.RUnlock()
+	entry, ok := mfsm.mdNodeRegistry[raftAddr]
+	if !ok {
+		return MetadataNodeEntry{}, ErrMetadataNodeNotFound
+	}
+	return *entry, nil
 }
 
 // Repair reads

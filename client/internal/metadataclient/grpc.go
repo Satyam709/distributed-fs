@@ -3,44 +3,47 @@ package metadataclient
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/satyam709/distributed-fs/internal/leaderclient"
+	"github.com/satyam709/distributed-fs/internal/retry"
 )
 
-// GRPCClient implements Client using the generated MetadataService gRPC stub.
-// It hides raw proto types from the rest of the client.
+const metadataServicePath = "/proto.metadata.v1.MetadataService/"
+
 type GRPCClient struct {
-	conn   *grpc.ClientConn
-	client pb_meta.MetadataServiceClient
+	client     *leaderclient.LeaderAwareClient
+	rpcTimeout time.Duration
 }
 
-// NewGRPCClient connects to the metadata service at the given address.
-func NewGRPCClient(addr string) (*GRPCClient, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func NewGRPCClient(seedAddrs []string, rp retry.Policy, rpcTimeout time.Duration) (*GRPCClient, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	lc, err := leaderclient.New(ctx, seedAddrs, rp)
 	if err != nil {
-		return nil, fmt.Errorf("metadataclient: failed to connect to %s: %w", addr, err)
+		return nil, fmt.Errorf("metadataclient: %w", err)
 	}
-	return &GRPCClient{
-		conn:   conn,
-		client: pb_meta.NewMetadataServiceClient(conn),
-	}, nil
+	return &GRPCClient{client: lc, rpcTimeout: rpcTimeout}, nil
 }
 
-// Close shuts down the gRPC connection.
 func (g *GRPCClient) Close() error {
-	return g.conn.Close()
+	return g.client.Close()
 }
 
 func (g *GRPCClient) CreateFile(ctx context.Context, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
-	resp, err := g.client.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.CreateFileRequest{
 		FileName:  fileName,
 		FileSize:  fileSize,
 		ChunkSize: chunkSize,
 		ChunkIds:  chunkIDs,
-	})
-	if err != nil {
+	}
+	var resp pb_meta.CreateFileResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"CreateFile", req, &resp); err != nil {
 		return "", nil, fmt.Errorf("metadataclient: CreateFile RPC failed: %w", err)
 	}
 
@@ -56,28 +59,33 @@ func (g *GRPCClient) CreateFile(ctx context.Context, fileName string, fileSize i
 			Replicas: replicas,
 		})
 	}
-
 	return resp.GetFileId(), placements, nil
 }
 
 func (g *GRPCClient) CommitChunk(ctx context.Context, chunkID, fileID string, confirmedNodes []string, checksum string) error {
-	_, err := g.client.CommitChunk(ctx, &pb_meta.CommitChunkRequest{
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.CommitChunkRequest{
 		ChunkId:        chunkID,
 		FileId:         fileID,
 		ConfirmedNodes: confirmedNodes,
 		Checksum:       []byte(checksum),
-	})
-	if err != nil {
+	}
+	var resp pb_meta.CommitChunkResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"CommitChunk", req, &resp); err != nil {
 		return fmt.Errorf("metadataclient: CommitChunk RPC failed: %w", err)
 	}
 	return nil
 }
 
 func (g *GRPCClient) GetFile(ctx context.Context, fileID string) (*FileInfo, []ChunkInfo, error) {
-	resp, err := g.client.GetFile(ctx, &pb_meta.GetFileRequest{
-		FileId: fileID,
-	})
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.GetFileRequest{FileId: fileID}
+	var resp pb_meta.GetFileResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"GetFile", req, &resp); err != nil {
 		return nil, nil, fmt.Errorf("metadataclient: GetFile RPC failed: %w", err)
 	}
 
@@ -90,8 +98,6 @@ func (g *GRPCClient) GetFile(ctx context.Context, fileID string) (*FileInfo, []C
 }
 
 func (g *GRPCClient) GetFileByName(ctx context.Context, fileName string) (*FileInfo, []ChunkInfo, error) {
-	// The proto GetFile takes file_id. To search by name, we list and filter.
-	// A future proto update could add a GetFileByName RPC. For now, use ListFiles.
 	files, err := g.ListFiles(ctx, "")
 	if err != nil {
 		return nil, nil, err
@@ -105,10 +111,12 @@ func (g *GRPCClient) GetFileByName(ctx context.Context, fileName string) (*FileI
 }
 
 func (g *GRPCClient) ListFiles(ctx context.Context, prefix string) ([]FileInfo, error) {
-	// Note: ListFilesRequest has no Prefix field in the current proto.
-	// Prefix filtering is done client-side for now.
-	resp, err := g.client.ListFiles(ctx, &pb_meta.ListFilesRequest{})
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.ListFilesRequest{}
+	var resp pb_meta.ListFilesResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"ListFiles", req, &resp); err != nil {
 		return nil, fmt.Errorf("metadataclient: ListFiles RPC failed: %w", err)
 	}
 
@@ -120,20 +128,24 @@ func (g *GRPCClient) ListFiles(ctx context.Context, prefix string) ([]FileInfo, 
 }
 
 func (g *GRPCClient) DeleteFile(ctx context.Context, fileID string) error {
-	_, err := g.client.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
-		FileId: fileID,
-	})
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.DeleteFileRequest{FileId: fileID}
+	var resp pb_meta.DeleteFileResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"DeleteFile", req, &resp); err != nil {
 		return fmt.Errorf("metadataclient: DeleteFile RPC failed: %w", err)
 	}
 	return nil
 }
 
 func (g *GRPCClient) GetChunkLocations(ctx context.Context, chunkID string) ([]string, error) {
-	resp, err := g.client.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
-		ChunkId: chunkID,
-	})
-	if err != nil {
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	req := &pb_meta.GetChunkLocationsRequest{ChunkId: chunkID}
+	var resp pb_meta.GetChunkLocationsResponse
+	if err := g.client.Invoke(ctx, metadataServicePath+"GetChunkLocations", req, &resp); err != nil {
 		return nil, fmt.Errorf("metadataclient: GetChunkLocations RPC failed: %w", err)
 	}
 
@@ -143,8 +155,6 @@ func (g *GRPCClient) GetChunkLocations(ctx context.Context, chunkID string) ([]s
 	}
 	return addrs, nil
 }
-
-// --- proto conversion helpers ---
 
 func protoToFileInfo(f *pb_meta.FileInfo) *FileInfo {
 	if f == nil {

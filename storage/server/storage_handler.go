@@ -144,14 +144,13 @@ func (s *StorageServerHandler) PutChunk(stream grpc.ClientStreamingServer[pb_sto
 					Checksum:       []byte(lastFrame.Checksum),
 				})
 				if err != nil {
-					s.logger.Warn("PutChunk: failed to commit chunk to metadata",
-						slog.String("chunkId", lastFrame.ChunkId),
-						slog.String("err", err.Error()))
-				} else {
-					s.logger.Info("PutChunk: chunk committed to metadata",
-						slog.String("chunkId", lastFrame.ChunkId),
-						slog.Int("confirmedNodes", len(confirmedNodes)))
+					s.logger.Error("PutChunk: failed to commit chunk to metadata", err,
+						slog.String("chunkId", lastFrame.ChunkId))
+					return status.Errorf(codes.Internal, "metadata commit failed: %v", err)
 				}
+				s.logger.Info("PutChunk: chunk committed to metadata",
+					slog.String("chunkId", lastFrame.ChunkId),
+					slog.Int("confirmedNodes", len(confirmedNodes)))
 			}
 
 			// Echo the chunk_id and the client-supplied checksum back so the

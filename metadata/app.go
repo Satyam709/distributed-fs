@@ -2,7 +2,9 @@ package metadata
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -183,6 +185,29 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 
 	if err := raftutil.WaitForLeader(a.raft, 30*time.Second); err != nil {
 		return err
+	}
+
+	if raftutil.IsLeader(a.raft) {
+		payload, err := json.Marshal(fsm.CommandRegisterMetadataNode{
+			NodeID:   a.Config.NodeID,
+			RaftAddr: a.Config.RaftAddr,
+			GrpcAddr: a.Config.GRPCAddr,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build RegisterMetadataNode command: %w", err)
+		}
+		cmd := fsm.MetadataCommand{
+			Type:    fsm.CmdRegisterMetadataNode,
+			Payload: payload,
+		}
+		if err := fsm.Propose(a.raft, cmd); err != nil {
+			a.logger.Error("failed to register metadata node in FSM", err,
+				"nodeID", a.Config.NodeID)
+		} else {
+			a.logger.Info("metadata node registered in FSM",
+				"nodeID", a.Config.NodeID,
+				"grpcAddr", a.Config.GRPCAddr)
+		}
 	}
 
 	a.scheduler.Start(ctx)

@@ -14,7 +14,7 @@ func TestLoadFromJSON(t *testing.T) {
 	jsonContent := `{
 		"node_id": "storage-1",
 		"grpc_addr": ":4100",
-		"metadata_addr": ":3100",
+		"metadata_addrs": [":3100"],
 		"data_dir": "/tmp/storage",
 		"timeout": "30s",
 		"heartbeat_interval": "5s",
@@ -32,7 +32,7 @@ func TestLoadFromJSON(t *testing.T) {
 
 	assert.Equal(t, "storage-1", cfg.NodeID)
 	assert.Equal(t, ":4100", cfg.GRPCAddr)
-	assert.Equal(t, ":3100", cfg.MetadataAddr)
+	assert.Equal(t, []string{":3100"}, cfg.MetadataAddrs)
 	assert.Equal(t, "/tmp/storage", cfg.DataDir)
 	assert.Equal(t, 30*time.Second, cfg.Timeout)
 	assert.Equal(t, 5*time.Second, cfg.HeartbeatInterval)
@@ -56,7 +56,7 @@ func TestLoadFromJSON_InvalidJSON(t *testing.T) {
 
 func TestLoadFromJSON_AppliesDefaults(t *testing.T) {
 	jsonContent := `{
-		"metadata_addr": ":3100"
+		"metadata_addrs": [":3100"]
 	}`
 
 	tmpDir := t.TempDir()
@@ -80,7 +80,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, defConfig.DataDir, DefaultStorageDataDir)
 	assert.Equal(t, defConfig.GRPCAddr, DefaultStorageGRPCAddr)
 	assert.Equal(t, defConfig.HeartbeatInterval, DefaultStorageHeartbeatInterval)
-	assert.Equal(t, defConfig.MetadataAddr, DefaultStorageMetadataAddr)
+	assert.Equal(t, defConfig.MetadataAddrs, []string{DefaultStorageMetadataAddr})
 	// assert.Equal(t, defConfig.NodeID, DefaultStorageDataDir)
 	assert.Equal(t, defConfig.ReplicationFactor, DefaultStorageReplicationFactor)
 	assert.Equal(t, defConfig.Timeout, DefaultStorageTimeout)
@@ -92,7 +92,7 @@ func TestLoadConfigDefaultFlow_DefaultsOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, DefaultStorageGRPCAddr, cfg.GRPCAddr)
-	assert.Equal(t, DefaultStorageMetadataAddr, cfg.MetadataAddr)
+	assert.Equal(t, []string{DefaultStorageMetadataAddr}, cfg.MetadataAddrs)
 	assert.Equal(t, DefaultStorageDataDir, cfg.DataDir)
 	assert.Equal(t, DefaultStorageReplicationFactor, cfg.ReplicationFactor)
 }

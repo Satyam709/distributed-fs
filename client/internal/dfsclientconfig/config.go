@@ -5,14 +5,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/satyam709/distributed-fs/internal/retry"
 )
 
-// Size guardrails — enforced by Validate().
 const (
-	MinChunkSize = 64 * 1024        // 64 KB
-	MaxChunkSize = 64 * 1024 * 1024 // 64 MB
-	MinFrameSize = 4 * 1024         // 4 KB
-	MaxFrameSize = 4 * 1024 * 1024  // 4 MB (gRPC default max message size)
+	MinChunkSize = 64 * 1024
+	MaxChunkSize = 64 * 1024 * 1024
+	MinFrameSize = 4 * 1024
+	MaxFrameSize = 4 * 1024 * 1024
 )
 
 type Config struct {
@@ -24,24 +26,36 @@ type Config struct {
 	OutputDir            string
 	RetryAttempts        int
 	FrameSize            int
+	RetryBaseBackoff     time.Duration
+	RetryMaxBackoff      time.Duration
+	RPCTimeout           time.Duration
 }
 
-// DefaultConfig provides the baseline settings as per implementation specs.
 func DefaultConfig() *Config {
 	return &Config{
-		MetadataAddrs:        []string{"localhost:50050"}, // Metadata leader address
-		ChunkSize:            4 * 1024 * 1024,             // Default 4MB
-		MaxParallelUploads:   4,                           // Default 4
-		MaxParallelDownloads: 4,                           // Default 4
+		MetadataAddrs:        []string{"localhost:50050"},
+		ChunkSize:            4 * 1024 * 1024,
+		MaxParallelUploads:   4,
+		MaxParallelDownloads: 4,
 		ManifestDir:          "./manifests_logs",
 		OutputDir:            "./downloads_logs",
-		RetryAttempts:        3,         // Default 3 retries per chunk
-		FrameSize:            32 * 1024, // Default 32KB frames
+		RetryAttempts:        5,
+		FrameSize:            32 * 1024,
+		RetryBaseBackoff:     100 * time.Millisecond,
+		RetryMaxBackoff:      5 * time.Second,
+		RPCTimeout:           10 * time.Second,
 	}
 }
 
-// Validate checks that ChunkSize and FrameSize are within acceptable
-// ranges. Called automatically by the SDK constructor.
+func (c *Config) RetryPolicy() retry.Policy {
+	return retry.Policy{
+		MaxAttempts: c.RetryAttempts,
+		Base:        c.RetryBaseBackoff,
+		Max:         c.RetryMaxBackoff,
+		Multiplier:  2.0,
+	}
+}
+
 func (c *Config) Validate() error {
 	if c.ChunkSize < MinChunkSize || c.ChunkSize > MaxChunkSize {
 		return fmt.Errorf("dfsclientconfig: chunk_size %d out of range [%d, %d]",
@@ -54,7 +68,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// LoadFromEnv allows overriding defaults via environment variables.
 func LoadFromEnv() *Config {
 	cfg := DefaultConfig()
 
@@ -90,6 +103,21 @@ func LoadFromEnv() *Config {
 	if val := os.Getenv("FRAME_SIZE"); val != "" {
 		if i, err := strconv.Atoi(val); err == nil {
 			cfg.FrameSize = i
+		}
+	}
+	if val := os.Getenv("RETRY_BASE_BACKOFF"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.RetryBaseBackoff = d
+		}
+	}
+	if val := os.Getenv("RETRY_MAX_BACKOFF"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.RetryMaxBackoff = d
+		}
+	}
+	if val := os.Getenv("RPC_TIMEOUT"); val != "" {
+		if d, err := time.ParseDuration(val); err == nil {
+			cfg.RPCTimeout = d
 		}
 	}
 

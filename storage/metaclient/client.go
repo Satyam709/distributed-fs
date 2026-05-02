@@ -3,13 +3,14 @@ package metaclient
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
+	"github.com/satyam709/distributed-fs/internal/leaderclient"
+	"github.com/satyam709/distributed-fs/internal/retry"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
-// A sub interface of pb_meta.NewMetadataServiceClient, only comprises of operations allowed from storage node
 type StorageMetadataClientInterface interface {
 	RegisterNode(ctx context.Context, in *pb_meta.RegisterNodeRequest, opts ...grpc.CallOption) (*pb_meta.RegisterNodeResponse, error)
 	DeregisterNode(ctx context.Context, in *pb_meta.DeregisterNodeRequest, opts ...grpc.CallOption) (*pb_meta.DeregisterNodeResponse, error)
@@ -18,21 +19,74 @@ type StorageMetadataClientInterface interface {
 	CommitChunk(ctx context.Context, in *pb_meta.CommitChunkRequest, opts ...grpc.CallOption) (*pb_meta.CommitChunkResponse, error)
 }
 
+const metadataServicePath = "/proto.metadata.v1.MetadataService/"
+
 type StorageMetadataClient struct {
-	StorageMetadataClientInterface
+	client  *leaderclient.LeaderAwareClient
+	timeout time.Duration
 }
 
-func NewMetadataClient(addr string) (*StorageMetadataClient, error) {
-	grpcClient, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func NewMetadataClient(seedAddrs []string, rp retry.Policy, timeout time.Duration) (*StorageMetadataClient, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	lc, err := leaderclient.New(ctx, seedAddrs, rp)
 	if err != nil {
 		return nil, fmt.Errorf("new metadata client: %w", err)
 	}
-	return &StorageMetadataClient{
-		pb_meta.NewMetadataServiceClient(grpcClient),
-	}, nil
+	return &StorageMetadataClient{client: lc, timeout: timeout}, nil
 }
 
-// MockMetaForNode A nil implementation Only for testing purposes
+func (m *StorageMetadataClient) RegisterNode(ctx context.Context, in *pb_meta.RegisterNodeRequest, opts ...grpc.CallOption) (*pb_meta.RegisterNodeResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	var resp pb_meta.RegisterNodeResponse
+	if err := m.client.Invoke(ctx, metadataServicePath+"RegisterNode", in, &resp, opts...); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (m *StorageMetadataClient) DeregisterNode(ctx context.Context, in *pb_meta.DeregisterNodeRequest, opts ...grpc.CallOption) (*pb_meta.DeregisterNodeResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	var resp pb_meta.DeregisterNodeResponse
+	if err := m.client.Invoke(ctx, metadataServicePath+"DeregisterNode", in, &resp, opts...); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (m *StorageMetadataClient) Heartbeat(ctx context.Context, in *pb_meta.HeartbeatRequest, opts ...grpc.CallOption) (*pb_meta.HeartbeatResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	var resp pb_meta.HeartbeatResponse
+	if err := m.client.Invoke(ctx, metadataServicePath+"Heartbeat", in, &resp, opts...); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (m *StorageMetadataClient) ReportRepairResult(ctx context.Context, in *pb_meta.ReportRepairResultRequest, opts ...grpc.CallOption) (*pb_meta.ReportRepairResultResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	var resp pb_meta.ReportRepairResultResponse
+	if err := m.client.Invoke(ctx, metadataServicePath+"ReportRepairResult", in, &resp, opts...); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (m *StorageMetadataClient) CommitChunk(ctx context.Context, in *pb_meta.CommitChunkRequest, opts ...grpc.CallOption) (*pb_meta.CommitChunkResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	var resp pb_meta.CommitChunkResponse
+	if err := m.client.Invoke(ctx, metadataServicePath+"CommitChunk", in, &resp, opts...); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 type MockMetaForNode struct {
 	StorageMetadataClientInterface
 }

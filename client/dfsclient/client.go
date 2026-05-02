@@ -48,7 +48,7 @@ func New(opts ...Option) (*Client, error) {
 		return nil, fmt.Errorf("dfsclient: %w", err)
 	}
 
-	meta, err := metadataclient.NewGRPCClient(cfg.MetadataAddrs[0])
+	meta, err := metadataclient.NewGRPCClient(cfg.MetadataAddrs, cfg.RetryPolicy(), cfg.RPCTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("dfsclient: failed to connect to metadata service: %w", err)
 	}

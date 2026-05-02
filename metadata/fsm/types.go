@@ -94,3 +94,12 @@ type RepairJob struct {
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 }
+
+// MetadataNodeEntry stores the raft→grpc address mapping for a metadata
+// cluster member. Used by the leader redirect mechanism to tell clients
+// which gRPC address to reconnect to.
+type MetadataNodeEntry struct {
+	NodeID   string `json:"node_id"`
+	RaftAddr string `json:"raft_addr"`
+	GrpcAddr string `json:"grpc_addr"`
+}

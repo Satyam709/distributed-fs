@@ -20,6 +20,7 @@ import (
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/internal/retry"
 	"github.com/satyam709/distributed-fs/metadata"
 	"github.com/satyam709/distributed-fs/storage"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
@@ -158,7 +159,8 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 			t.Fatalf("disk store %d: %v", i, err)
 		}
 
-		mc, err := metaclient.NewMetadataClient(c.MetaAddr)
+		rp := retry.Policy{MaxAttempts: 3, Base: 100 * time.Millisecond, Max: 5 * time.Second, Multiplier: 2.0}
+		mc, err := metaclient.NewMetadataClient([]string{c.MetaAddr}, rp, 10*time.Second)
 		if err != nil {
 			t.Fatalf("metaclient %d: %v", i, err)
 		}
@@ -167,7 +169,7 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 		cfg := storage.StorageNodeConfig{
 			NodeID:            nodeID,
 			GRPCAddr:          "127.0.0.1:0",
-			MetadataAddr:      c.MetaAddr,
+			MetadataAddrs:     []string{c.MetaAddr},
 			DataDir:           dir,
 			Timeout:           30 * time.Second,
 			HeartbeatInterval: 1 * time.Second,
