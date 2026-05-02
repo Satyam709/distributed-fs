@@ -35,6 +35,7 @@ const (
 	EnvMetadataNodeID            string = "METADATA_NODE_ID"
 	EnvMetadataGrpcAddr          string = "METADATA_GRPC_ADDR"
 	EnvMetadataRaftAddr          string = "METADATA_RAFT_ADDR"
+	EnvMetadataRaftAdvertise     string = "METADATA_RAFT_ADVERTISE"
 	EnvMetadataRaftDir           string = "METADATA_RAFT_DIR"
 	EnvMetadataPeerAddrs         string = "METADATA_PEER_ADDRS"
 	EnvMetadataBootstrap         string = "METADATA_BOOTSTRAP"
@@ -53,11 +54,12 @@ const (
 )
 
 type NodeConfig struct {
-	NodeID    string            `json:"node_id"`
-	GRPCAddr  string            `json:"grpc_addr"`
-	RaftAddr  string            `json:"raft_addr"`
-	RaftDir   string            `json:"raft_dir"`
-	PeerAddrs map[string]string `json:"peer_addrs"` // nodeID → raftAddr
+	NodeID        string            `json:"node_id"`
+	GRPCAddr      string            `json:"grpc_addr"`
+	RaftAddr      string            `json:"raft_addr"`
+	RaftAdvertise string            `json:"raft_advertise"`
+	RaftDir       string            `json:"raft_dir"`
+	PeerAddrs     map[string]string `json:"peer_addrs"` // nodeID → raftAddr
 
 	Bootstrap bool `json:"bootstrap"`
 
@@ -106,6 +108,9 @@ func (c *NodeConfig) Validate() error {
 	}
 	if c.RaftDir == "" {
 		return errors.New("config: RaftDir is required")
+	}
+	if err := os.MkdirAll(c.RaftDir, 0755); err != nil {
+		return fmt.Errorf("failed to create raft dir %s: %w", c.RaftDir, err)
 	}
 	return nil
 }
@@ -230,6 +235,9 @@ func (c *NodeConfig) ApplyEnv() error {
 	}
 	if v := os.Getenv(EnvMetadataRaftAddr); v != "" {
 		c.RaftAddr = v
+	}
+	if v := os.Getenv(EnvMetadataRaftAdvertise); v != "" {
+		c.RaftAdvertise = v
 	}
 	if v := os.Getenv(EnvMetadataRaftDir); v != "" {
 		c.RaftDir = v

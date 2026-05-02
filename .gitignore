@@ -12,3 +12,9 @@ test_output/
 test_files/
 /data
 /worktree
+
+# generated compose file
+scripts/docker-compose.yml
+
+# cluster data directories
+scripts/cluster-data/
