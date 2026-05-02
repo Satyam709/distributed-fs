@@ -54,12 +54,12 @@ const (
 )
 
 type NodeConfig struct {
-	NodeID    string            `json:"node_id"`
-	GRPCAddr  string            `json:"grpc_addr"`
-	RaftAddr  string            `json:"raft_addr"`
-	RaftAdvertise string        `json:"raft_advertise"`
-	RaftDir   string            `json:"raft_dir"`
-	PeerAddrs map[string]string `json:"peer_addrs"` // nodeID → raftAddr
+	NodeID        string            `json:"node_id"`
+	GRPCAddr      string            `json:"grpc_addr"`
+	RaftAddr      string            `json:"raft_addr"`
+	RaftAdvertise string            `json:"raft_advertise"`
+	RaftDir       string            `json:"raft_dir"`
+	PeerAddrs     map[string]string `json:"peer_addrs"` // nodeID → raftAddr
 
 	Bootstrap bool `json:"bootstrap"`
 
