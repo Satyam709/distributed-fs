@@ -84,7 +84,7 @@ func TestLeaderAwareClient_FollowsRedirect(t *testing.T) {
 
 	lc, err := leaderclient.New(ctx, []string{followerAddr}, rp)
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	metaClient := pb_meta.NewMetadataServiceClient(lc)
 
@@ -115,7 +115,7 @@ func TestLeaderCrash_ClientRecovers(t *testing.T) {
 	ctx := context.Background()
 	lc, err := leaderclient.New(ctx, mc.Addrs, rp)
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	metaClient := pb_meta.NewMetadataServiceClient(lc)
 
@@ -155,7 +155,7 @@ func TestLeaderCrash_ReadAfterFailover(t *testing.T) {
 
 	lc, err := leaderclient.New(context.Background(), mc.Addrs, rp)
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	metaClient := pb_meta.NewMetadataServiceClient(lc)
 

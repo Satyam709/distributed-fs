@@ -45,7 +45,7 @@ func startTestServer(t *testing.T, fn func(context.Context, *pb_meta.CreateFileR
 // redirectHandler returns FailedPrecondition and sets the x-leader-grpc-addr trailer.
 func redirectHandler(leaderAddr string) func(context.Context, *pb_meta.CreateFileRequest) (*pb_meta.CreateFileResponse, error) {
 	return func(ctx context.Context, req *pb_meta.CreateFileRequest) (*pb_meta.CreateFileResponse, error) {
-		grpc.SetTrailer(ctx, metadata.Pairs("x-leader-grpc-addr", leaderAddr))
+		_ = grpc.SetTrailer(ctx, metadata.Pairs("x-leader-grpc-addr", leaderAddr))
 		return nil, status.Error(codes.FailedPrecondition, "not leader")
 	}
 }
@@ -71,7 +71,7 @@ func TestInvoke_Success(t *testing.T) {
 	addr := startTestServer(t, successHandler)
 	lc, err := New(context.Background(), []string{addr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	req := &pb_meta.CreateFileRequest{}
 	var resp pb_meta.CreateFileResponse
@@ -86,7 +86,7 @@ func TestInvoke_LeaderRedirect_FollowsRedirect(t *testing.T) {
 
 	lc, err := New(context.Background(), []string{followerAddr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	req := &pb_meta.CreateFileRequest{}
 	var resp pb_meta.CreateFileResponse
@@ -109,7 +109,7 @@ func TestInvoke_RetryOnUnavailable(t *testing.T) {
 
 	lc, err := New(context.Background(), []string{deadAddr, liveAddr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	req := &pb_meta.CreateFileRequest{}
 	var resp pb_meta.CreateFileResponse
@@ -127,7 +127,7 @@ func TestInvoke_NonRetryableError_ReturnedImmediately(t *testing.T) {
 		Multiplier:  2.0,
 	})
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	start := time.Now()
 	req := &pb_meta.CreateFileRequest{}
@@ -153,7 +153,7 @@ func TestInvoke_ContextCancelled(t *testing.T) {
 		Multiplier:  2.0,
 	})
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -192,7 +192,7 @@ func TestInvoke_AllSeedsUnreachable_ReturnsError(t *testing.T) {
 
 	lc, err := New(context.Background(), []string{deadAddr1, deadAddr2}, rp)
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	req := &pb_meta.CreateFileRequest{}
 	var resp pb_meta.CreateFileResponse
@@ -214,7 +214,7 @@ func TestInvoke_RedirectThenFallback_Retries(t *testing.T) {
 
 	lc, err := New(context.Background(), []string{deadAddr, followerAddr, leaderAddr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	req := &pb_meta.CreateFileRequest{}
 	var resp pb_meta.CreateFileResponse
@@ -227,7 +227,7 @@ func TestInvoke_New_ConnectsToFirstAvailable(t *testing.T) {
 	addr := startTestServer(t, successHandler)
 	lc, err := New(context.Background(), []string{addr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 	assert.NotNil(t, lc.cache.Conn())
 }
 
@@ -235,7 +235,7 @@ func TestNewStream_DelegatesToConnection(t *testing.T) {
 	addr := startTestServer(t, successHandler)
 	lc, err := New(context.Background(), []string{addr}, makeRetryPolicy())
 	require.NoError(t, err)
-	defer lc.Close()
+	defer func() { _ = lc.Close() }()
 
 	cs, err := lc.NewStream(context.Background(), &grpc.StreamDesc{
 		StreamName:    "TestStream",

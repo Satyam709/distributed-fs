@@ -29,18 +29,18 @@ const (
 )
 
 const (
-	EnvStorageNodeID             string = "STORAGE_NODE_ID"
-	EnvStorageGrpcAddr           string = "STORAGE_GRPC_ADDR"
-	EnvStorageMetadataAddrs      string = "STORAGE_METADATA_ADDRS"
-	EnvStorageDataDir            string = "STORAGE_DATA_DIR"
-	EnvStorageReplicationFactor  string = "STORAGE_REPLICATION_FACTOR"
-	EnvStorageTimeout            string = "STORAGE_TIMEOUT"
-	EnvStorageHeartbeatInterval  string = "STORAGE_HEARTBEAT_INTERVAL"
-	EnvStorageRPCTimeout         string = "STORAGE_RPC_TIMEOUT"
-	EnvStorageRetryMaxAttempts   string = "STORAGE_RETRY_MAX_ATTEMPTS"
-	EnvStorageRetryBaseBackoff   string = "STORAGE_RETRY_BASE_BACKOFF"
-	EnvStorageRetryMaxBackoff    string = "STORAGE_RETRY_MAX_BACKOFF"
-	EnvStorageJsonConfigPath     string = "STORAGE_CONFIG"
+	EnvStorageNodeID            string = "STORAGE_NODE_ID"
+	EnvStorageGrpcAddr          string = "STORAGE_GRPC_ADDR"
+	EnvStorageMetadataAddrs     string = "STORAGE_METADATA_ADDRS"
+	EnvStorageDataDir           string = "STORAGE_DATA_DIR"
+	EnvStorageReplicationFactor string = "STORAGE_REPLICATION_FACTOR"
+	EnvStorageTimeout           string = "STORAGE_TIMEOUT"
+	EnvStorageHeartbeatInterval string = "STORAGE_HEARTBEAT_INTERVAL"
+	EnvStorageRPCTimeout        string = "STORAGE_RPC_TIMEOUT"
+	EnvStorageRetryMaxAttempts  string = "STORAGE_RETRY_MAX_ATTEMPTS"
+	EnvStorageRetryBaseBackoff  string = "STORAGE_RETRY_BASE_BACKOFF"
+	EnvStorageRetryMaxBackoff   string = "STORAGE_RETRY_MAX_BACKOFF"
+	EnvStorageJsonConfigPath    string = "STORAGE_CONFIG"
 )
 
 type StorageNodeConfig struct {
@@ -103,17 +103,17 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 	}
 
 	var raw struct {
-		NodeID             *string  `json:"node_id"`
-		GRPCAddr           *string  `json:"grpc_addr"`
-		MetadataAddrs      *[]string `json:"metadata_addrs"`
-		Timeout            *string  `json:"timeout"`
-		HeartbeatInterval  *string  `json:"heartbeat_interval"`
-		DataDir            *string  `json:"data_dir"`
-		ReplicationFactor  *int     `json:"replication_factor"`
-		RPCTimeout         *string  `json:"rpc_timeout"`
-		RetryMaxAttempts   *int     `json:"retry_max_attempts"`
-		RetryBaseBackoff   *string  `json:"retry_base_backoff"`
-		RetryMaxBackoff    *string  `json:"retry_max_backoff"`
+		NodeID            *string   `json:"node_id"`
+		GRPCAddr          *string   `json:"grpc_addr"`
+		MetadataAddrs     *[]string `json:"metadata_addrs"`
+		Timeout           *string   `json:"timeout"`
+		HeartbeatInterval *string   `json:"heartbeat_interval"`
+		DataDir           *string   `json:"data_dir"`
+		ReplicationFactor *int      `json:"replication_factor"`
+		RPCTimeout        *string   `json:"rpc_timeout"`
+		RetryMaxAttempts  *int      `json:"retry_max_attempts"`
+		RetryBaseBackoff  *string   `json:"retry_base_backoff"`
+		RetryMaxBackoff   *string   `json:"retry_max_backoff"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {

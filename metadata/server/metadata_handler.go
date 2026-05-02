@@ -60,7 +60,7 @@ func (h *MetadataServiceHandler) leaderRedirect(ctx context.Context) error {
 	}
 	grpcAddr, err := h.deps.FSM.GetMetadataNodeByRaftAddr(addr)
 	if err == nil {
-		grpc.SetTrailer(ctx, metadata.Pairs("x-leader-grpc-addr", grpcAddr.GrpcAddr))
+		_ = grpc.SetTrailer(ctx, metadata.Pairs("x-leader-grpc-addr", grpcAddr.GrpcAddr))
 	}
 	return status.Error(codes.FailedPrecondition, "not leader")
 }

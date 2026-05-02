@@ -42,10 +42,10 @@ type MetadataFSM struct {
 var _ raft.FSMSnapshot = &MetadataFSMSnapshot{}
 
 type MetadataFSMSnapshot struct {
-	FileIndex         map[string]FileRecord  `json:"file_index"`
-	ChunkRegistry     map[string]ChunkRecord `json:"chunk_registry"`
-	NodeRegistry      map[string]NodeEntry   `json:"node_registry"`
-	RepairJobRegistry map[string]RepairJob   `json:"repairjob_registry"`
+	FileIndex         map[string]FileRecord        `json:"file_index"`
+	ChunkRegistry     map[string]ChunkRecord       `json:"chunk_registry"`
+	NodeRegistry      map[string]NodeEntry         `json:"node_registry"`
+	RepairJobRegistry map[string]RepairJob         `json:"repairjob_registry"`
 	MDNodeRegistry    map[string]MetadataNodeEntry `json:"md_node_registry"`
 }
 

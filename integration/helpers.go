@@ -234,10 +234,10 @@ func (c *TestCluster) Shutdown() {
 // plus pre-dialled gRPC connections to each. Used to test leader redirection
 // and failover scenarios.
 type MultiMetaCluster struct {
-	Apps  []*metadata.MetadataApp
-	Addrs []string // gRPC addrs (leader at index 0 until failover)
-	Conns []*grpc.ClientConn
-	Clients []pb_meta.MetadataServiceClient
+	Apps     []*metadata.MetadataApp
+	Addrs    []string // gRPC addrs (leader at index 0 until failover)
+	Conns    []*grpc.ClientConn
+	Clients  []pb_meta.MetadataServiceClient
 	cleanups []func()
 }
 

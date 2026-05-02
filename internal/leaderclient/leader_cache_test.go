@@ -17,7 +17,7 @@ func TestLeaderCache_Update_NewAddr(t *testing.T) {
 	conn := c.Conn()
 	require.NotNil(t, conn)
 
-	c.Close()
+	_ = c.Close()
 }
 
 func TestLeaderCache_Update_SameAddr_Noop(t *testing.T) {
@@ -34,7 +34,7 @@ func TestLeaderCache_Update_SameAddr_Noop(t *testing.T) {
 	conn2 := c.Conn()
 	assert.Same(t, conn1, conn2, "same addr should not create new connection")
 
-	c.Close()
+	_ = c.Close()
 }
 
 func TestLeaderCache_Update_SwitchesConnection(t *testing.T) {
@@ -51,7 +51,7 @@ func TestLeaderCache_Update_SwitchesConnection(t *testing.T) {
 
 	assert.NotSame(t, conn1, conn2, "different addr must create new connection")
 
-	c.Close()
+	_ = c.Close()
 }
 
 func TestLeaderCache_NextAddr_RoundRobin(t *testing.T) {
@@ -79,7 +79,7 @@ func TestLeaderCache_ConcurrentAccess(t *testing.T) {
 	c := NewLeaderCache([]string{"localhost:1"})
 	err := c.Update(context.Background(), "localhost:1")
 	require.NoError(t, err)
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
