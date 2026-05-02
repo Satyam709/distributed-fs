@@ -15,6 +15,7 @@ type LeaderCache struct {
 	seedAddrs   []string
 	nextIdx     int
 	conn        *grpc.ClientConn
+	dialOpts    []grpc.DialOption
 }
 
 func NewLeaderCache(seedAddrs []string) *LeaderCache {
@@ -39,7 +40,8 @@ func (c *LeaderCache) Update(ctx context.Context, addr string) error {
 		_ = c.conn.Close()
 	}
 
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, c.dialOpts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return fmt.Errorf("leaderclient: failed to dial %s: %w", addr, err)
 	}

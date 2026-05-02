@@ -183,31 +183,8 @@ func (a *MetadataApp) initWorkers() {
 func (a *MetadataApp) Run(ctx context.Context) error {
 	a.logger.Info("starting metadata app", "nodeID", a.Config.NodeID)
 
-	if err := raftutil.WaitForLeader(a.raft, 30*time.Second); err != nil {
+	if err := raftutil.WaitForLeader(a.raft, 10*time.Second); err != nil {
 		return err
-	}
-
-	if raftutil.IsLeader(a.raft) {
-		payload, err := json.Marshal(fsm.CommandRegisterMetadataNode{
-			NodeID:   a.Config.NodeID,
-			RaftAddr: a.Config.RaftAddr,
-			GrpcAddr: a.Config.GRPCAddr,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to build RegisterMetadataNode command: %w", err)
-		}
-		cmd := fsm.MetadataCommand{
-			Type:    fsm.CmdRegisterMetadataNode,
-			Payload: payload,
-		}
-		if err := fsm.Propose(a.raft, cmd); err != nil {
-			a.logger.Error("failed to register metadata node in FSM", err,
-				"nodeID", a.Config.NodeID)
-		} else {
-			a.logger.Info("metadata node registered in FSM",
-				"nodeID", a.Config.NodeID,
-				"grpcAddr", a.Config.GRPCAddr)
-		}
 	}
 
 	a.scheduler.Start(ctx)
@@ -236,7 +213,32 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 		}
 	}()
 
-	a.logger.Info("metadata app started", "grpcAddr", a.Config.GRPCAddr)
+	// Register metadata node in FSM AFTER gRPC server is bound, so we
+	// capture the correct bound gRPC address for redirect trailers.
+	if raftutil.IsLeader(a.raft) {
+		payload, err := json.Marshal(fsm.CommandRegisterMetadataNode{
+			NodeID:   a.Config.NodeID,
+			RaftAddr: a.Config.RaftAddr,
+			GrpcAddr: a.BoundGRPCAddr(),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to build RegisterMetadataNode command: %w", err)
+		}
+		cmd := fsm.MetadataCommand{
+			Type:    fsm.CmdRegisterMetadataNode,
+			Payload: payload,
+		}
+		if err := fsm.Propose(a.raft, cmd); err != nil {
+			a.logger.Error("failed to register metadata node in FSM", err,
+				"nodeID", a.Config.NodeID)
+		} else {
+			a.logger.Info("metadata node registered in FSM",
+				"nodeID", a.Config.NodeID,
+				"grpcAddr", a.BoundGRPCAddr())
+		}
+	}
+
+	a.logger.Info("metadata app started", "grpcAddr", a.BoundGRPCAddr())
 	return nil
 }
 
@@ -248,6 +250,12 @@ func (a *MetadataApp) BoundGRPCAddr() string {
 		return ""
 	}
 	return a.grpcLis.Addr().String()
+}
+
+// LeaderRaftAddr returns the Raft address of the current leader as seen
+// by this node. Only valid after Run(); returns "" if no leader is elected.
+func (a *MetadataApp) LeaderRaftAddr() string {
+	return raftutil.LeaderAddress(a.raft)
 }
 
 func (a *MetadataApp) Shutdown(ctx context.Context) error {

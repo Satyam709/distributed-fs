@@ -221,10 +221,172 @@ func (c *TestCluster) Shutdown() {
 	if c.MetaApp != nil {
 		_ = c.MetaApp.Shutdown(context.Background())
 	}
-	// Run registered cleanups in LIFO order.
 	for i := len(c.cleanups) - 1; i >= 0; i-- {
 		c.cleanups[i]()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Multi-node metadata cluster for failover tests.
+// ---------------------------------------------------------------------------
+
+// MultiMetaCluster holds multiple metadata nodes forming a Raft cluster,
+// plus pre-dialled gRPC connections to each. Used to test leader redirection
+// and failover scenarios.
+type MultiMetaCluster struct {
+	Apps  []*metadata.MetadataApp
+	Addrs []string // gRPC addrs (leader at index 0 until failover)
+	Conns []*grpc.ClientConn
+	Clients []pb_meta.MetadataServiceClient
+	cleanups []func()
+}
+
+// Shutdown tears down all metadata nodes and connections.
+func (m *MultiMetaCluster) Shutdown() {
+	for _, conn := range m.Conns {
+		_ = conn.Close()
+	}
+	for _, app := range m.Apps {
+		_ = app.Shutdown(context.Background())
+	}
+	for i := len(m.cleanups) - 1; i >= 0; i-- {
+		m.cleanups[i]()
+	}
+}
+
+// StartMultiMetadataCluster boots numNodes metadata nodes as a Raft cluster.
+// The first node bootstraps; all others join using PeerAddrs pointing to node-1.
+// All nodes use deterministic raft ports and random gRPC ports.
+func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
+	t.Helper()
+	mc := &MultiMetaCluster{}
+
+	if numNodes < 2 {
+		t.Fatalf("StartMultiMetadataCluster requires at least 2 nodes, got %d", numNodes)
+	}
+
+	// Collect raft addrs for peer map.
+	raftAddrs := make(map[string]string, numNodes)
+	for i := 0; i < numNodes; i++ {
+		nodeID := fmt.Sprintf("meta-test-%d", i+1)
+		raftAddrs[nodeID] = nextRaftAddr()
+	}
+
+	for i := 0; i < numNodes; i++ {
+		nodeID := fmt.Sprintf("meta-test-%d", i+1)
+		raftDir := t.TempDir()
+
+		peers := make(map[string]string)
+		for nid, addr := range raftAddrs {
+			if nid != nodeID {
+				peers[nid] = addr
+			}
+		}
+
+		metaCfg := metadata.NodeConfig{
+			NodeID:            nodeID,
+			GRPCAddr:          "127.0.0.1:0",
+			RaftAddr:          raftAddrs[nodeID],
+			RaftDir:           raftDir,
+			PeerAddrs:         peers,
+			Bootstrap:         i == 0,
+			ReplicationFactor: 3,
+			SuspectTimeout:    10 * time.Second,
+			DeadTimeout:       30 * time.Second,
+			WatcherInterval:   5 * time.Second,
+			ReconcileDelay:    10 * time.Second,
+			HeartbeatTimeout:  1 * time.Second,
+			ElectionTimeout:   3 * time.Second,
+			SnapshotInterval:  120 * time.Second,
+			SnapshotThreshold: 8192,
+			SnapshotRetain:    1,
+		}
+
+		app, err := metadata.NewMetadataApp(metaCfg)
+		if err != nil {
+			t.Fatalf("NewMetadataApp %d: %v", i, err)
+		}
+		mc.Apps = append(mc.Apps, app)
+	}
+
+	// Start all nodes concurrently so Raft transports bind simultaneously,
+	// allowing the cluster to form correctly.
+	errCh := make(chan error, numNodes)
+	type result struct {
+		idx int
+		app *metadata.MetadataApp
+	}
+	resCh := make(chan result, numNodes)
+
+	for i, app := range mc.Apps {
+		go func(idx int, a *metadata.MetadataApp) {
+			if err := a.Run(context.Background()); err != nil {
+				errCh <- fmt.Errorf("MetadataApp.Run %d: %w", idx, err)
+				return
+			}
+			resCh <- result{idx: idx, app: a}
+		}(i, app)
+	}
+
+	// Collect results, ensuring all apps are running before proceeding.
+	runningApps := make([]*metadata.MetadataApp, numNodes)
+	for i := 0; i < numNodes; i++ {
+		select {
+		case err := <-errCh:
+			t.Fatalf("%v", err)
+		case r := <-resCh:
+			runningApps[r.idx] = r.app
+		}
+	}
+	mc.Apps = runningApps
+
+	// Collect addrs in order.
+	mc.Addrs = make([]string, numNodes)
+	for i, app := range mc.Apps {
+		mc.Addrs[i] = app.BoundGRPCAddr()
+		nodeID := fmt.Sprintf("meta-test-%d", i+1)
+		t.Logf("metadata node %q gRPC on %s raft on %s", nodeID, mc.Addrs[i], raftAddrs[nodeID])
+	}
+
+	// Give Raft time to elect a leader.
+	time.Sleep(2 * time.Second)
+
+	// Dial all metadata nodes.
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	for _, addr := range mc.Addrs {
+		conn, err := grpc.NewClient(addr, opts...)
+		if err != nil {
+			t.Fatalf("dial metadata %s: %v", addr, err)
+		}
+		mc.Conns = append(mc.Conns, conn)
+		mc.Clients = append(mc.Clients, pb_meta.NewMetadataServiceClient(conn))
+	}
+
+	return mc
+}
+
+// LeaderIndex returns the index of the current Raft leader in the cluster,
+// or -1 if no leader is elected.
+func (m *MultiMetaCluster) LeaderIndex() int {
+	for i := range m.Apps {
+		leaderAddr := m.Apps[i].LeaderRaftAddr()
+		if leaderAddr != "" && leaderAddr == m.Apps[i].Config.RaftAddr {
+			return i
+		}
+	}
+	return -1
+}
+
+// FollowerIndices returns the indices of all non-leader nodes.
+func (m *MultiMetaCluster) FollowerIndices() []int {
+	leader := m.LeaderIndex()
+	var followers []int
+	for i := range m.Apps {
+		if i != leader {
+			followers = append(followers, i)
+		}
+	}
+	return followers
 }
 
 // ---------------------------------------------------------------------------
