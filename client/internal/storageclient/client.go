@@ -11,7 +11,7 @@ type Client interface {
 	// PutChunk uploads a chunk to a storage node. The implementation handles
 	// framing (splitting data into 32KB frames) and streaming.
 	// replicateTo contains addresses of nodes the primary should replicate to.
-	PutChunk(ctx context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum string, replicateTo []string) error
+	PutChunk(ctx context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum []byte, replicateTo []string) error
 
 	// GetChunk downloads a chunk from a storage node. The implementation
 	// handles stream frame assembly.

@@ -3,6 +3,7 @@ package metadataclient
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
@@ -45,11 +46,12 @@ func (g *GRPCClient) Close() error {
 
 // CreateFile registers a new file with the metadata service and returns
 // chunk placement assignments (primary + replicas for each chunk).
-func (g *GRPCClient) CreateFile(ctx context.Context, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
+func (g *GRPCClient) CreateFile(ctx context.Context, fileID, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
 	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
 	defer cancel()
 
 	resp, err := g.metaClient.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		FileId:    fileID,
 		FileName:  fileName,
 		FileSize:  fileSize,
 		ChunkSize: chunkSize,
@@ -76,7 +78,7 @@ func (g *GRPCClient) CreateFile(ctx context.Context, fileName string, fileSize i
 
 // CommitChunk confirms that a chunk was successfully stored on the given
 // nodes with the given checksum.
-func (g *GRPCClient) CommitChunk(ctx context.Context, chunkID, fileID string, confirmedNodes []string, checksum string) error {
+func (g *GRPCClient) CommitChunk(ctx context.Context, chunkID, fileID string, confirmedNodes []string, checksum []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
 	defer cancel()
 
@@ -84,7 +86,7 @@ func (g *GRPCClient) CommitChunk(ctx context.Context, chunkID, fileID string, co
 		ChunkId:        chunkID,
 		FileId:         fileID,
 		ConfirmedNodes: confirmedNodes,
-		Checksum:       []byte(checksum),
+		Checksum:       checksum,
 	})
 	if err != nil {
 		return fmt.Errorf("metadataclient: CommitChunk RPC failed: %w", err)
@@ -140,6 +142,9 @@ func (g *GRPCClient) ListFiles(ctx context.Context, prefix string) ([]FileInfo, 
 
 	files := make([]FileInfo, 0, len(resp.GetFiles()))
 	for _, f := range resp.GetFiles() {
+		if prefix != "" && !strings.HasPrefix(f.GetFileName(), prefix) {
+			continue
+		}
 		files = append(files, *protoToFileInfo(f))
 	}
 	return files, nil
@@ -200,7 +205,7 @@ func protoToChunkInfo(c *pb_meta.ChunkInfo) ChunkInfo {
 		FileID:     c.GetFileId(),
 		ChunkIndex: int(c.GetChunkIndex()),
 		Size:       c.GetSize(),
-		Checksum:   string(c.GetChecksum()),
+		Checksum:   c.GetChecksum(),
 		Replicas:   c.GetReplicas(),
 	}
 }

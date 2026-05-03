@@ -170,3 +170,47 @@ func TestApplyEnv_InvalidReplicationFactor(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid env var STORAGE_REPLICATION_FACTOR")
 }
+
+func TestAdvertiseAddr_Env(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	t.Setenv(EnvStorageAdvertiseAddr, "storage-1:4000")
+
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "storage-1:4000", cfg.AdvertiseAddr)
+	assert.Equal(t, DefaultStorageGRPCAddr, cfg.GRPCAddr)
+}
+
+func TestAdvertiseAddr_JSON(t *testing.T) {
+	jsonContent := `{"advertise_addr": "storage-2:4000", "grpc_addr": ":4000"}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "storage-2:4000", cfg.AdvertiseAddr)
+}
+
+func TestAdvertiseAddr_EnvOverridesJSON(t *testing.T) {
+	jsonContent := `{"advertise_addr": "json-addr:4000"}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+	t.Setenv(EnvStorageAdvertiseAddr, "env-addr:4000")
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "env-addr:4000", cfg.AdvertiseAddr)
+}
+
+func TestAdvertiseAddr_EmptyByDefault(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.AdvertiseAddr)
+}

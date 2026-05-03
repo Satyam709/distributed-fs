@@ -49,7 +49,7 @@ func (g *GRPCClient) getOrDial(addr string) (pb_storage.StorageServiceClient, er
 	return pb_storage.NewStorageServiceClient(conn), nil
 }
 
-func (g *GRPCClient) PutChunk(ctx context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum string, replicateTo []string) error {
+func (g *GRPCClient) PutChunk(ctx context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum []byte, replicateTo []string) error {
 	client, err := g.getOrDial(addr)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (g *GRPCClient) PutChunk(ctx context.Context, addr string, chunkID, fileID 
 			FileId:      fileID,
 			ReplicateTo: replicaNodes,
 			Data:        data[i:end],
-			Checksum:    []byte(checksum),
+			Checksum:    checksum,
 			IsLast:      isLast,
 		}
 
@@ -95,7 +95,7 @@ func (g *GRPCClient) PutChunk(ctx context.Context, addr string, chunkID, fileID 
 			FileId:      fileID,
 			ReplicateTo: replicaNodes,
 			Data:        nil,
-			Checksum:    []byte(checksum),
+			Checksum:    checksum,
 			IsLast:      true,
 		}
 		if err := stream.Send(req); err != nil {

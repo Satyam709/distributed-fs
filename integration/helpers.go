@@ -174,6 +174,10 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 			Timeout:           30 * time.Second,
 			HeartbeatInterval: 1 * time.Second,
 			ReplicationFactor: numStorage,
+			RPCTimeout:        10 * time.Second,
+			RetryMaxAttempts:  3,
+			RetryBaseBackoff:  100 * time.Millisecond,
+			RetryMaxBackoff:   5 * time.Second,
 		}
 
 		node, err := storage.NewStorageNode(cfg, logger, ds, mc)

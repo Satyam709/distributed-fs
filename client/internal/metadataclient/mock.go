@@ -55,7 +55,7 @@ type commitChunkCall struct {
 	ChunkID        string
 	FileID         string
 	ConfirmedNodes []string
-	Checksum       string
+	Checksum       []byte
 }
 
 // NewMockClient creates a MockClient with empty state.
@@ -67,7 +67,7 @@ func NewMockClient() *MockClient {
 	}
 }
 
-func (m *MockClient) CreateFile(_ context.Context, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
+func (m *MockClient) CreateFile(_ context.Context, fileID, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,7 +80,9 @@ func (m *MockClient) CreateFile(_ context.Context, fileName string, fileSize int
 	}
 
 	m.nextFileID++
-	fileID := fmt.Sprintf("file-%03d", m.nextFileID)
+	if fileID == "" {
+		fileID = fmt.Sprintf("file-%03d", m.nextFileID)
+	}
 
 	m.Files[fileID] = &FileInfo{
 		FileID:    fileID,
@@ -106,7 +108,7 @@ func (m *MockClient) CreateFile(_ context.Context, fileName string, fileSize int
 	return fileID, placements, nil
 }
 
-func (m *MockClient) CommitChunk(_ context.Context, chunkID, fileID string, confirmedNodes []string, checksum string) error {
+func (m *MockClient) CommitChunk(_ context.Context, chunkID, fileID string, confirmedNodes []string, checksum []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

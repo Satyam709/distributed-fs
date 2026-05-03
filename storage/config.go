@@ -40,6 +40,7 @@ const (
 	EnvStorageRetryMaxAttempts  string = "STORAGE_RETRY_MAX_ATTEMPTS"
 	EnvStorageRetryBaseBackoff  string = "STORAGE_RETRY_BASE_BACKOFF"
 	EnvStorageRetryMaxBackoff   string = "STORAGE_RETRY_MAX_BACKOFF"
+	EnvStorageAdvertiseAddr     string = "STORAGE_ADVERTISE_ADDR"
 	EnvStorageJsonConfigPath    string = "STORAGE_CONFIG"
 )
 
@@ -47,6 +48,7 @@ type StorageNodeConfig struct {
 	NodeID string `json:"node_id"`
 
 	GRPCAddr      string   `json:"grpc_addr"`
+	AdvertiseAddr string   `json:"advertise_addr"`
 	MetadataAddrs []string `json:"metadata_addrs"`
 
 	Timeout           time.Duration `json:"timeout"`
@@ -105,6 +107,7 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 	var raw struct {
 		NodeID            *string   `json:"node_id"`
 		GRPCAddr          *string   `json:"grpc_addr"`
+		AdvertiseAddr     *string   `json:"advertise_addr"`
 		MetadataAddrs     *[]string `json:"metadata_addrs"`
 		Timeout           *string   `json:"timeout"`
 		HeartbeatInterval *string   `json:"heartbeat_interval"`
@@ -125,6 +128,9 @@ func (c *StorageNodeConfig) ApplyJSON(path string) error {
 	}
 	if raw.GRPCAddr != nil {
 		c.GRPCAddr = *raw.GRPCAddr
+	}
+	if raw.AdvertiseAddr != nil {
+		c.AdvertiseAddr = *raw.AdvertiseAddr
 	}
 	if raw.MetadataAddrs != nil {
 		c.MetadataAddrs = *raw.MetadataAddrs
@@ -174,6 +180,9 @@ func (c *StorageNodeConfig) ApplyEnv() error {
 	}
 	if v := os.Getenv(EnvStorageGrpcAddr); v != "" {
 		c.GRPCAddr = v
+	}
+	if v := os.Getenv(EnvStorageAdvertiseAddr); v != "" {
+		c.AdvertiseAddr = v
 	}
 	if v := os.Getenv(EnvStorageMetadataAddrs); v != "" {
 		c.MetadataAddrs = strings.Split(v, ",")

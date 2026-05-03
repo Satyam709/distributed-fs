@@ -85,11 +85,10 @@ func (s *UploadService) Upload(ctx context.Context, filePath string, fileName st
 		return nil, fmt.Errorf("upload: failed to create manifest: %w", err)
 	}
 
-	serverFileID, placements, err := s.metadata.CreateFile(ctx, fileName, fileInfo.Size(), s.cfg.ChunkSize, chunkIDs)
+	serverFileID, placements, err := s.metadata.CreateFile(ctx, fileID, fileName, fileInfo.Size(), s.cfg.ChunkSize, chunkIDs)
 	if err != nil {
 		return nil, fmt.Errorf("upload: CreateFile failed: %w", err)
 	}
-	_ = serverFileID
 
 	placementMap := make(map[string]metadataclient.Placement)
 	for _, p := range placements {
@@ -143,7 +142,7 @@ func (s *UploadService) Upload(ctx context.Context, filePath string, fileName st
 	wg.Wait()
 
 	result := &UploadResult{
-		FileID:       fileID,
+		FileID:       serverFileID,
 		FileName:     fileName,
 		TotalSize:    fileInfo.Size(),
 		ChunksTotal:  total,
@@ -181,13 +180,6 @@ func (s *UploadService) uploadChunkWithRetry(ctx context.Context, file *os.File,
 			log.Printf("upload: chunk %s PutChunk failed: %v", desc.ChunkID, err)
 			return err
 		}
-
-		confirmedNodes := append([]string{placement.Primary}, placement.Replicas...)
-		if err := s.metadata.CommitChunk(ctx, desc.ChunkID, desc.FileID, confirmedNodes, dataChecksum); err != nil {
-			log.Printf("upload: chunk %s CommitChunk failed: %v", desc.ChunkID, err)
-			return err
-		}
-
 		return nil
 	})
 	if err != nil {

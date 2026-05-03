@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"google.golang.org/grpc/codes"
@@ -13,6 +14,10 @@ import (
 func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateFileRequest) (*pb.CreateFileResponse, error) {
 	if !h.isLeader() {
 		return nil, h.leaderRedirect(ctx)
+	}
+
+	if req.FileId == "" {
+		req.FileId = uuid.New().String()
 	}
 	// check duplicate filename
 	_, err := h.deps.FSM.GetFile(req.FileId)

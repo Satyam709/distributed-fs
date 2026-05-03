@@ -95,11 +95,15 @@ func (s *StorageNode) GetChunkList() ([]string, error) {
 	return s.store.List()
 }
 
-// GetGrpcAddr returns this node's actual gRPC address.
-// If the listener is bound (after Start), returns the real address,
-// which is critical when the config uses ":0" for OS-assigned ports.
-// Implements the service.NodeInfo interface.
+// GetGrpcAddr returns this node's effective gRPC address for external
+// communication. If AdvertiseAddr is configured, it is returned to allow
+// nodes behind NAT/Docker to advertise a routable address while binding
+// locally to a different one. Otherwise, returns the real listener address
+// (after Start) or the configured GRPCAddr (before Start).
 func (s *StorageNode) GetGrpcAddr() string {
+	if s.config.AdvertiseAddr != "" {
+		return s.config.AdvertiseAddr
+	}
 	if s.grpcLis != nil {
 		return s.grpcLis.Addr().String()
 	}
