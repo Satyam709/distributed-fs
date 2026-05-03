@@ -41,7 +41,10 @@ func (p Policy) Do(ctx context.Context, fn func() error) error {
 			break
 		}
 
-		jitter := time.Duration(rand.Int64N(int64(delay / 2)))
+		jitter := time.Duration(0)
+		if half := int64(delay / 2); half > 0 {
+			jitter = time.Duration(rand.Int64N(half))
+		}
 		sleep := min(delay+jitter, p.Max)
 
 		select {

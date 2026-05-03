@@ -32,7 +32,19 @@ func makeNode(t *testing.T, addr string) *StorageNode {
 	require.NoError(t, err)
 
 	node, err := NewStorageNode(
-		StorageNodeConfig{GRPCAddr: addr, Timeout: 5 * time.Second, NodeID: "test-node-1", MetadataAddrs: []string{":3000"}, DataDir: dir, ReplicationFactor: 3, HeartbeatInterval: 3 * time.Second},
+		StorageNodeConfig{
+			GRPCAddr:          addr,
+			Timeout:           5 * time.Second,
+			NodeID:            "test-node-1",
+			MetadataAddrs:     []string{":3000"},
+			DataDir:           dir,
+			ReplicationFactor: 3,
+			HeartbeatInterval: 3 * time.Second,
+			RetryMaxAttempts:  1,
+			RetryBaseBackoff:  10 * time.Millisecond,
+			RetryMaxBackoff:   100 * time.Millisecond,
+			RPCTimeout:        5 * time.Second,
+		},
 		logging.NewCLogger(),
 		ds,
 		&metaclient.MockMetaForNode{},

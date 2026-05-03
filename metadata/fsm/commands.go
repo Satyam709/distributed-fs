@@ -221,7 +221,8 @@ type CommandRegisterMetadataNode struct {
 // CommandDeregisterMetadataNode removes a metadata node from the address
 // registry, typically during graceful shutdown.
 type CommandDeregisterMetadataNode struct {
-	NodeID string `json:"node_id"`
+	NodeID   string `json:"node_id"`
+	RaftAddr string `json:"raft_addr"` // key used in mdNodeRegistry
 }
 
 // Propose serialises the given MetadataCommand and submits it to the

@@ -29,25 +29,27 @@ func (c *LeaderCache) Conn() *grpc.ClientConn {
 }
 
 func (c *LeaderCache) Update(ctx context.Context, addr string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.currentAddr == addr && c.conn != nil {
-		return nil
-	}
-
-	if c.conn != nil {
-		_ = c.conn.Close()
-	}
-
 	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, c.dialOpts...)
-	conn, err := grpc.NewClient(addr, opts...)
+	newConn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return fmt.Errorf("leaderclient: failed to dial %s: %w", addr, err)
 	}
 
-	c.conn = conn
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.currentAddr == addr && c.conn != nil {
+		_ = newConn.Close()
+		return nil
+	}
+
+	oldConn := c.conn
+	c.conn = newConn
 	c.currentAddr = addr
+
+	if oldConn != nil {
+		_ = oldConn.Close()
+	}
 	return nil
 }
 

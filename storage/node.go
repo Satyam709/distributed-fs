@@ -216,5 +216,8 @@ func (s *StorageNode) Stop() {
 	s.grpcServer.GracefulStop()
 	s.replicationManager.Stop()
 	s.peerDialer.CloseAll()
+	if err := s.metaClient.Close(); err != nil {
+		s.logger.Warn("StorageNode: failed to close metadata client", slog.String("err", err.Error()))
+	}
 	s.logger.Info("StorageNode: stopped")
 }

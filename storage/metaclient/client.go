@@ -21,6 +21,7 @@ type StorageMetadataClientInterface interface {
 	Heartbeat(ctx context.Context, in *pb_meta.HeartbeatRequest, opts ...grpc.CallOption) (*pb_meta.HeartbeatResponse, error)
 	ReportRepairResult(ctx context.Context, in *pb_meta.ReportRepairResultRequest, opts ...grpc.CallOption) (*pb_meta.ReportRepairResultResponse, error)
 	CommitChunk(ctx context.Context, in *pb_meta.CommitChunkRequest, opts ...grpc.CallOption) (*pb_meta.CommitChunkResponse, error)
+	Close() error
 }
 
 // StorageMetadataClient wraps a LeaderAwareClient that transparently
@@ -89,6 +90,10 @@ func (m *StorageMetadataClient) CommitChunk(ctx context.Context, in *pb_meta.Com
 	return m.metaClient.CommitChunk(ctx, in, opts...)
 }
 
+func (m *StorageMetadataClient) Close() error {
+	return m.lc.Close()
+}
+
 // MockMetaForNode is an in-memory no-op implementation used in tests.
 // All methods return a zero-value success response without making any
 // network calls.
@@ -114,4 +119,8 @@ func (m *MockMetaForNode) ReportRepairResult(ctx context.Context, in *pb_meta.Re
 
 func (m *MockMetaForNode) CommitChunk(ctx context.Context, in *pb_meta.CommitChunkRequest, opts ...grpc.CallOption) (*pb_meta.CommitChunkResponse, error) {
 	return &pb_meta.CommitChunkResponse{}, nil
+}
+
+func (m *MockMetaForNode) Close() error {
+	return nil
 }

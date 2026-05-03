@@ -176,7 +176,7 @@ func (s *UploadService) uploadChunkWithRetry(ctx context.Context, file *os.File,
 	var replicateTo []string
 	replicateTo = append(replicateTo, placement.Replicas...)
 
-	return s.cfg.RetryPolicy().Do(ctx, func() error {
+	err = s.cfg.RetryPolicy().Do(ctx, func() error {
 		if err := s.storage.PutChunk(ctx, placement.Primary, desc.ChunkID, desc.FileID, desc.ChunkIndex, buffer, dataChecksum, replicateTo); err != nil {
 			log.Printf("upload: chunk %s PutChunk failed: %v", desc.ChunkID, err)
 			return err
@@ -190,4 +190,8 @@ func (s *UploadService) uploadChunkWithRetry(ctx context.Context, file *os.File,
 
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("uploadChunkWithRetry chunk=%s primary=%s: %w", desc.ChunkID, placement.Primary, err)
+	}
+	return nil
 }

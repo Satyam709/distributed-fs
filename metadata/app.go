@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -215,28 +214,19 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 
 	// Register metadata node in FSM AFTER gRPC server is bound, so we
 	// capture the correct bound gRPC address for redirect trailers.
-	if raftutil.IsLeader(a.raft) {
-		payload, err := json.Marshal(fsm.CommandRegisterMetadataNode{
-			NodeID:   a.Config.NodeID,
-			RaftAddr: a.Config.RaftAddr,
-			GrpcAddr: a.BoundGRPCAddr(),
-		})
-		if err != nil {
-			return fmt.Errorf("failed to build RegisterMetadataNode command: %w", err)
+	a.registerInFSM()
+
+	// Watch for leadership changes and re-register the raft→gRPC mapping
+	// whenever this node becomes leader. This ensures leader redirects
+	// work after a leadership transition.
+	go func() {
+		for isLeader := range a.raft.LeaderCh() {
+			if isLeader {
+				a.logger.Info("became leader, re-registering metadata node in FSM")
+				a.registerInFSM()
+			}
 		}
-		cmd := fsm.MetadataCommand{
-			Type:    fsm.CmdRegisterMetadataNode,
-			Payload: payload,
-		}
-		if err := fsm.Propose(a.raft, cmd); err != nil {
-			a.logger.Error("failed to register metadata node in FSM", err,
-				"nodeID", a.Config.NodeID)
-		} else {
-			a.logger.Info("metadata node registered in FSM",
-				"nodeID", a.Config.NodeID,
-				"grpcAddr", a.BoundGRPCAddr())
-		}
-	}
+	}()
 
 	a.logger.Info("metadata app started", "grpcAddr", a.BoundGRPCAddr())
 	return nil
@@ -256,6 +246,36 @@ func (a *MetadataApp) BoundGRPCAddr() string {
 // by this node. Only valid after Run(); returns "" if no leader is elected.
 func (a *MetadataApp) LeaderRaftAddr() string {
 	return raftutil.LeaderAddress(a.raft)
+}
+
+// registerInFSM proposes a RegisterMetadataNode command to persist this
+// node's raft→gRPC address mapping in the replicated FSM. Only the leader
+// should call this; followers silently ignore the proposal.
+func (a *MetadataApp) registerInFSM() {
+	if !raftutil.IsLeader(a.raft) {
+		return
+	}
+	payload, err := json.Marshal(fsm.CommandRegisterMetadataNode{
+		NodeID:   a.Config.NodeID,
+		RaftAddr: a.Config.RaftAddr,
+		GrpcAddr: a.BoundGRPCAddr(),
+	})
+	if err != nil {
+		a.logger.Error("failed to build RegisterMetadataNode command", err)
+		return
+	}
+	cmd := fsm.MetadataCommand{
+		Type:    fsm.CmdRegisterMetadataNode,
+		Payload: payload,
+	}
+	if err := fsm.Propose(a.raft, cmd); err != nil {
+		a.logger.Error("failed to register metadata node in FSM", err,
+			"nodeID", a.Config.NodeID)
+	} else {
+		a.logger.Info("metadata node registered in FSM",
+			"nodeID", a.Config.NodeID,
+			"grpcAddr", a.BoundGRPCAddr())
+	}
 }
 
 func (a *MetadataApp) Shutdown(ctx context.Context) error {

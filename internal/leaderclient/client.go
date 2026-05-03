@@ -17,10 +17,10 @@ var _ grpc.ClientConnInterface = (*LeaderAwareClient)(nil)
 
 // LeaderAwareClient is a gRPC connection wrapper that transparently handles
 // metadata leader redirection, address rotation, and retry with exponential
-// backoff. It implements grpc.ClientConnInterface so it can be passed directly
-// to generated gRPC stubs (e.g. pb_meta.NewMetadataServiceClient).
+// backoff for unary RPCs. It implements grpc.ClientConnInterface so it can
+// be passed directly to generated gRPC stubs (e.g. pb_meta.NewMetadataServiceClient).
 //
-// Redirect flow:
+// Redirect flow for unary RPCs:
 //  1. Call the RPC against the currently cached leader connection.
 //  2. If the response carries status FailedPrecondition with trailer
 //     "x-leader-grpc-addr", update the cache to point at the new leader
@@ -29,6 +29,9 @@ var _ grpc.ClientConnInterface = (*LeaderAwareClient)(nil)
 //     through the seed address list with exponential backoff + jitter.
 //  4. Non-retryable errors (NotFound, InvalidArgument, etc.) are returned
 //     immediately without retry.
+//
+// NewStream is a pass-through to the current connection with no
+// redirect/retry logic — currently no streaming RPCs are in use.
 type LeaderAwareClient struct {
 	cache       *LeaderCache
 	retryPolicy retry.Policy
@@ -91,9 +94,14 @@ func (c *LeaderAwareClient) Invoke(ctx context.Context, method string, args any,
 		if attempt < c.retryPolicy.MaxAttempts-1 {
 			c.cache.AdvanceNextIdx()
 			nextAddr := c.cache.NextAddr()
-			_ = c.cache.Update(ctx, nextAddr)
+			if c.cache.Conn() == nil || nextAddr != "" {
+				_ = c.cache.Update(ctx, nextAddr)
+			}
 
-			jitter := time.Duration(rand.Int64N(int64(delay / 2)))
+			jitter := time.Duration(0)
+			if half := int64(delay / 2); half > 0 {
+				jitter = time.Duration(rand.Int64N(half))
+			}
 			sleep := min(delay+jitter, c.retryPolicy.Max)
 
 			select {

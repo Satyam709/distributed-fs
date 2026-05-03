@@ -65,6 +65,19 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("dfsclientconfig: frame_size %d out of range [%d, %d]",
 			c.FrameSize, MinFrameSize, MaxFrameSize)
 	}
+	if c.RetryAttempts < 1 {
+		return fmt.Errorf("dfsclientconfig: RetryAttempts must be >= 1, got %d", c.RetryAttempts)
+	}
+	if c.RetryBaseBackoff <= 0 {
+		return fmt.Errorf("dfsclientconfig: RetryBaseBackoff must be > 0, got %v", c.RetryBaseBackoff)
+	}
+	if c.RetryMaxBackoff < c.RetryBaseBackoff {
+		return fmt.Errorf("dfsclientconfig: RetryMaxBackoff (%v) must be >= RetryBaseBackoff (%v)",
+			c.RetryMaxBackoff, c.RetryBaseBackoff)
+	}
+	if c.RPCTimeout <= 0 {
+		return fmt.Errorf("dfsclientconfig: RPCTimeout must be > 0, got %v", c.RPCTimeout)
+	}
 	return nil
 }
 

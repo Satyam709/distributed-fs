@@ -749,7 +749,7 @@ func (mfsm *MetadataFSM) handleCmdRegisterMetadataNode(req CommandRegisterMetada
 func (mfsm *MetadataFSM) handleCmdDeregisterMetadataNode(req CommandDeregisterMetadataNode) error {
 	mfsm.mnMutex.Lock()
 	defer mfsm.mnMutex.Unlock()
-	delete(mfsm.mdNodeRegistry, req.NodeID)
+	delete(mfsm.mdNodeRegistry, req.RaftAddr)
 	return nil
 }
 
