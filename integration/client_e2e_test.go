@@ -28,17 +28,17 @@
 //
 // # Test Coverage
 //
-//	- Upload single-chunk file (< chunk size)
-//	- Upload multi-chunk file (> chunk size)
-//	- Upload exact-chunk-boundary file
-//	- Upload empty file (should fail)
-//	- Upload via io.Reader (UploadReader)
-//	- Download and verify byte-for-byte content
-//	- Checksum integrity verification (client computes SHA-256, storage validates, download re-checks)
-//	- List files (all, prefix-filtered)
-//	- Delete file
-//	- Upload then download round-trip
-//	- Multiple file upload, list, download each
+//   - Upload single-chunk file (< chunk size)
+//   - Upload multi-chunk file (> chunk size)
+//   - Upload exact-chunk-boundary file
+//   - Upload empty file (should fail)
+//   - Upload via io.Reader (UploadReader)
+//   - Download and verify byte-for-byte content
+//   - Checksum integrity verification (client computes SHA-256, storage validates, download re-checks)
+//   - List files (all, prefix-filtered)
+//   - Delete file
+//   - Upload then download round-trip
+//   - Multiple file upload, list, download each
 package integration
 
 import (
@@ -68,9 +68,9 @@ import (
 type fullCluster struct {
 	MetaCluster *MultiMetaCluster
 
-	storageNodes  []*storage.StorageNode
-	storageAddrs  []string
-	cleanups      []func()
+	storageNodes []*storage.StorageNode
+	storageAddrs []string
+	cleanups     []func()
 }
 
 // startFullCluster boots nMeta metadata nodes (Raft cluster) and nStorage
@@ -177,7 +177,7 @@ func newE2EClient(t *testing.T, metaAddrs []string, tmpDir string) *dfsclient.Cl
 
 	client, err := dfsclient.New(
 		dfsclient.WithMetadataAddrs(metaAddrs...),
-		dfsclient.WithChunkSize(64*1024),       // 64KB chunks
+		dfsclient.WithChunkSize(64*1024), // 64KB chunks
 		dfsclient.WithMaxParallelUploads(3),
 		dfsclient.WithMaxParallelDownloads(3),
 		dfsclient.WithManifestDir(filepath.Join(tmpDir, "manifests")),
@@ -528,9 +528,9 @@ func TestClientE2E_MultipleFiles(t *testing.T) {
 	}
 
 	files := []testFile{
-		{name: "file-a.bin", size: 10 * 1024},   // 10KB
-		{name: "file-b.bin", size: 100 * 1024},  // 100KB, multi-chunk
-		{name: "file-c.bin", size: 50 * 1024},   // 50KB
+		{name: "file-a.bin", size: 10 * 1024},  // 10KB
+		{name: "file-b.bin", size: 100 * 1024}, // 100KB, multi-chunk
+		{name: "file-c.bin", size: 50 * 1024},  // 50KB
 	}
 
 	for i := range files {

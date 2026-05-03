@@ -6,6 +6,7 @@ bin/**
 .idea/
 # Ignore build artifacts
 manifests_logs/
+/test-files
 
 # test artifacts
 test_output/

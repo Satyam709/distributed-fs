@@ -220,10 +220,19 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 	// whenever this node becomes leader. This ensures leader redirects
 	// work after a leadership transition.
 	go func() {
-		for isLeader := range a.raft.LeaderCh() {
-			if isLeader {
-				a.logger.Info("became leader, re-registering metadata node in FSM")
-				a.registerInFSM()
+		leaderCh := a.raft.LeaderCh()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case isLeader, ok := <-leaderCh:
+				if !ok {
+					return
+				}
+				if isLeader {
+					a.logger.Info("became leader, re-registering metadata node in FSM")
+					a.registerInFSM()
+				}
 			}
 		}
 	}()
