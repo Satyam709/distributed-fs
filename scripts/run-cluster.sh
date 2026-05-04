@@ -12,7 +12,7 @@ STORAGE_BUILD_DIR=".."
 METADATA_DOCKERFILE="metadata/Dockerfile"
 STORAGE_DOCKERFILE="storage/Dockerfile"
 CLUSTER_DATA_DIR="./cluster-data"
-CLIENT_CONFIG_FILE=""
+CLIENT_ENABLED=false
 
 usage() {
     echo "Usage: $0 [OPTIONS] [docker-compose-args]"
@@ -22,7 +22,7 @@ usage() {
     echo "  -s, --storage-count N     Number of storage nodes (default: 3)"
     echo "  -a, --metadata-addr      Metadata service address (default: metadata-1:4001)"
     echo "  -i, --image-prefix       Image prefix (default: devcon)"
-    echo "  -c, --client-config FILE  Write client .env with METADATA_ADDRS (default: ./cluster-data/dfsclient.env)"
+    echo "  -c, --client             Add client container service (builds dfs-cli, preconfigured for cluster network)"
     echo "  -h, --help              Show this help message"
     echo ""
     echo "Examples:"
@@ -31,7 +31,7 @@ usage() {
     echo "  $0 -m 3 -s 5 up -d"
     echo "  $0 -m 3 up -d"
     echo "  $0 -i myprefix up -d    # Custom image prefix"
-    echo "  $0 -c up -d             # Write client config and start"
+    echo "  $0 -c up -d --build     # Build all + client, run daemonized"
     exit 0
 }
 
@@ -53,11 +53,8 @@ while [[ $# -gt 0 ]]; do
             IMAGE_PREFIX="$2"
             shift 2
             ;;
-        -c|--client-config)
-            case "${2-}" in
-                ""|-*|up|down|ps|logs|restart|start|stop|pause|unpause) CLIENT_CONFIG_FILE="$CLUSTER_DATA_DIR/dfsclient.env" ;;
-                *) CLIENT_CONFIG_FILE="$2"; shift ;;
-            esac
+        -c|--client)
+            CLIENT_ENABLED=true
             shift
             ;;
         -h|--help)
@@ -75,6 +72,7 @@ echo "  Storage nodes: $STORAGE_NODE_COUNT"
 echo "  Metadata addr: $STORAGE_METADATA_ADDR"
 echo "  Image prefix: $IMAGE_PREFIX"
 echo "  Data dir: $CLUSTER_DATA_DIR"
+echo "  Client service: $CLIENT_ENABLED"
 
 mkdir -p "$CLUSTER_DATA_DIR"
 
@@ -154,6 +152,32 @@ for i in $(seq 1 "$STORAGE_NODE_COUNT"); do
     echo "      - metadata-1"
 done
 
+if [[ "$CLIENT_ENABLED" == "true" ]]; then
+    META_ADDRS=""
+    for i in $(seq 1 "$METADATA_NODE_COUNT"); do
+        GRPC_PORT=$((4000 + i))
+        if [[ -n "$META_ADDRS" ]]; then
+            META_ADDRS="${META_ADDRS},"
+        fi
+        META_ADDRS="${META_ADDRS}metadata-${i}:${GRPC_PORT}"
+    done
+
+    CLIENT_DOCKERFILE="scripts/Dockerfile.client"
+
+    echo "  client-1:"
+    echo "    image: client-${IMAGE_PREFIX}"
+    echo "    build:"
+    echo "      context: ${STORAGE_BUILD_DIR}"
+    echo "      dockerfile: ${CLIENT_DOCKERFILE}"
+    echo "    container_name: dfs-client"
+    echo "    environment:"
+    echo "      - METADATA_ADDRS=${META_ADDRS}"
+    echo "    volumes:"
+    echo "      - ${CLUSTER_DATA_DIR}/client:/client_data"
+    echo "    depends_on:"
+    echo "      - metadata-1"
+fi
+
 echo ""
 echo "networks:"
 echo "  default:"
@@ -162,26 +186,6 @@ echo "    name: dfs-cluster"
 } > "$COMPOSE_FILE"
 
 echo "Generated $COMPOSE_FILE"
-
-if [[ -n "$CLIENT_CONFIG_FILE" ]]; then
-    ADDRS="["
-    for i in $(seq 1 "$METADATA_NODE_COUNT"); do
-        GRPC_PORT=$((4000 + i))
-        if [[ $i -gt 1 ]]; then
-            ADDRS="${ADDRS}, "
-        fi
-        ADDRS="${ADDRS}\"localhost:${GRPC_PORT}\""
-    done
-    ADDRS="${ADDRS}]"
-    mkdir -p "$(dirname "$CLIENT_CONFIG_FILE")"
-    cat > "$CLIENT_CONFIG_FILE" <<EOF
-{
-  "metadata_addrs": $ADDRS
-}
-EOF
-    echo "Wrote client config: $CLIENT_CONFIG_FILE"
-    echo "  metadata_addrs: localhost:$(seq -s ',localhost:' 4002 $((4000 + METADATA_NODE_COUNT)))"
-fi
 
 if [[ $# -eq 0 ]]; then
     echo "No docker-compose args provided. Run manually with:"
