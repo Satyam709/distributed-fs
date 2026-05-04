@@ -10,8 +10,8 @@ import (
 	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
-	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"github.com/satyam709/distributed-fs/integration/testutil"
+	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

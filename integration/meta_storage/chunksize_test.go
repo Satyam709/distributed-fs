@@ -208,10 +208,6 @@ func TestMultiChunkDownloadOffsetCorrectness(t *testing.T) {
 	time.Sleep(1 * time.Second) // let commits propagate
 
 	// ── 2.5 Commit the file ──
-	var allData []byte
-	for _, p := range payloads {
-		allData = append(allData, p...)
-	}
 	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: totalSize,

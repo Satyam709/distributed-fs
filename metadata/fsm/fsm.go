@@ -661,6 +661,9 @@ func (mfsm *MetadataFSM) normalizeReplicaNodeIDs(rawIDs []string) []string {
 			}
 			normalized = append(normalized, resolved)
 			seen[resolved] = struct{}{}
+		} else {
+			normalized = append(normalized, entry)
+			seen[entry] = struct{}{}
 		}
 	}
 
