@@ -15,7 +15,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 	if !h.isLeader() {
 		return nil, h.leaderRedirect(ctx)
 	}
-
+	// TODO: Make the flow simpler - client will have no responsiblity of file id, server will generate it
 	if req.FileId == "" {
 		req.FileId = uuid.New().String()
 	}

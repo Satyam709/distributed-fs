@@ -27,12 +27,12 @@ type MetadataApp struct {
 	Config *NodeConfig
 
 	logger *logging.CLogger
-	fsm    *fsm.MetadataFSM
+	FSM    *fsm.MetadataFSM
 	raft   *raft.Raft
 	store  *raftboltdb.BoltStore
 
 	watcher    *watcher.NodeWatcher
-	scheduler  *scheduler.RepairScheduler
+	Scheduler  *scheduler.RepairScheduler
 	reconciler *reconcile.Reconciler
 
 	grpcServer *grpc.Server
@@ -103,7 +103,7 @@ func NewMetadataApp(config NodeConfig, opts ...AppOption) (*MetadataApp, error) 
 }
 
 func (a *MetadataApp) initFSM() error {
-	a.fsm = fsm.NewEmptyMetadataFsm(a.logger)
+	a.FSM = fsm.NewEmptyMetadataFsm(a.logger)
 	return nil
 }
 
@@ -131,7 +131,7 @@ func (a *MetadataApp) initStore() error {
 func (a *MetadataApp) initRaft() error {
 	raftIns, err := NewRaftNode(RaftConfig{
 		Config:      *a.Config,
-		FSM:         a.fsm,
+		FSM:         a.FSM,
 		LogStore:    a.store,
 		StableStore: a.store,
 	})
@@ -146,18 +146,18 @@ func (a *MetadataApp) initWorkers() {
 	proposer := &raftProposer{raft: a.raft}
 	rf := a.Config.ReplicationCount()
 
-	a.scheduler = scheduler.NewRepairScheduler(
+	a.Scheduler = scheduler.NewRepairScheduler(
 		a.raft,
-		a.fsm,
+		a.FSM,
 		a.sourcePlacement,
 		a.targetPlacement,
 		rf,
 	)
 
 	a.watcher = watcher.NewNodeWatcher(
-		a.fsm,
+		a.FSM,
 		proposer,
-		a.scheduler,
+		a.Scheduler,
 		a.Config.SuspectTimeout,
 		a.Config.WatcherInterval,
 	)
@@ -166,9 +166,9 @@ func (a *MetadataApp) initWorkers() {
 		a.storageClient = reconcile.NewThinStorageClient()
 	}
 	reconciler, err := reconcile.NewReconciler(
-		a.fsm,
+		a.FSM,
 		proposer,
-		a.scheduler,
+		a.Scheduler,
 		a.storageClient,
 		a.Config.ReconcileDelay,
 		rf,
@@ -186,7 +186,7 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 		return err
 	}
 
-	a.scheduler.Start(ctx)
+	a.Scheduler.Start(ctx)
 	go a.watcher.Start()
 
 	lis, err := net.Listen("tcp", a.Config.GRPCAddr)
@@ -197,8 +197,8 @@ func (a *MetadataApp) Run(ctx context.Context) error {
 
 	deps := &server.HandlerDeps{
 		Raft:              a.raft,
-		FSM:               a.fsm,
-		Scheduler:         a.scheduler,
+		FSM:               a.FSM,
+		Scheduler:         a.Scheduler,
 		Watcher:           a.watcher,
 		Reconciler:        a.reconciler,
 		TargetPlacement:   a.targetPlacement,
@@ -295,7 +295,7 @@ func (a *MetadataApp) Shutdown(ctx context.Context) error {
 	}
 
 	a.watcher.Stop()
-	a.scheduler.Stop()
+	a.Scheduler.Stop()
 
 	if a.raft != nil {
 		if err := a.raft.Shutdown().Error(); err != nil {
