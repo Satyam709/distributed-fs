@@ -180,6 +180,22 @@ func (g *GRPCClient) GetChunkLocations(ctx context.Context, chunkID string) ([]s
 	return addrs, nil
 }
 
+// CommitFile transitions a file from "creating" to "complete" status.
+func (g *GRPCClient) CommitFile(ctx context.Context, fileID string, fileSize int64, checksum []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, g.rpcTimeout)
+	defer cancel()
+
+	_, err := g.metaClient.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: fileSize,
+		Checksum: checksum,
+	})
+	if err != nil {
+		return fmt.Errorf("metadataclient: CommitFile RPC failed: %w", err)
+	}
+	return nil
+}
+
 // protoToFileInfo converts a protobuf FileInfo message into the internal
 // representation. Returns nil when the input is nil.
 func protoToFileInfo(f *pb_meta.FileInfo) *FileInfo {

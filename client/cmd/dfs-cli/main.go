@@ -170,14 +170,13 @@ func listCmd(cfg *dfsclientconfig.Config) *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "FILE ID\tNAME\tSIZE\tSTATUS\tCHUNKS")
-			_, _ = fmt.Fprintln(w, "-------\t----\t----\t------\t------")
+			_, _ = fmt.Fprintln(w, "FILE ID\tNAME\tSIZE\tCHUNKS")
+			_, _ = fmt.Fprintln(w, "-------\t----\t----\t------")
 			for _, f := range files {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%d\n",
 					f.FileID,
 					f.FileName,
 					formatBytes(f.FileSize),
-					f.Status,
 					f.ChunkCount,
 				)
 			}

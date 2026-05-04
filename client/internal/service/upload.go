@@ -155,6 +155,11 @@ func (s *UploadService) Upload(ctx context.Context, filePath string, fileName st
 		return result, result.Error
 	}
 
+	if err := s.metadata.CommitFile(ctx, serverFileID, fileInfo.Size(), nil); err != nil {
+		result.Error = fmt.Errorf("upload: CommitFile failed: %w", err)
+		return result, result.Error
+	}
+
 	if err := s.manifests.Delete(fileID); err != nil {
 		log.Printf("upload: failed to delete manifest: %v", err)
 	}

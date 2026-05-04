@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package meta_storage
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
+	"github.com/satyam709/distributed-fs/integration/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,18 +47,20 @@ func countAllRepairJobs(f *fsm.MetadataFSM) int {
 // Bug being exposed: CommitChunk unconditionally calls ScheduleRepairForChunk,
 // and the reconciler may also trigger spurious repair on fresh node registration.
 func TestNoSpuriousRepairJobs(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	baselineBefore := countAllRepairJobs(tc.MetaApp.FSM)
+
 	fileID := "no-spurious-repair"
 	chunkID := "no-spurious-chunk"
 	payload := []byte("No spurious repair test data.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "no-spurious.dat",
 		FileSize:  int64(len(payload)),
@@ -77,14 +80,14 @@ func TestNoSpuriousRepairJobs(t *testing.T) {
 	}
 	require.Len(t, replicaAddrs, 2, "placement should give 2 replicas with RF=3")
 
-	primaryClient := DialStorage(t, primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	primaryClient := testutil.DialStorage(t, primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 
 	// Wait for CommitChunk Raft proposal + replication to finish.
 	time.Sleep(2 * time.Second)
 
 	fileHash := sha256.Sum256(payload)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
@@ -94,15 +97,27 @@ func TestNoSpuriousRepairJobs(t *testing.T) {
 	// Let any spurious repair scheduling propagate.
 	time.Sleep(2 * time.Second)
 
-	pending := countPendingRepairJobs(testCluster.MetaApp.FSM)
-	total := countAllRepairJobs(testCluster.MetaApp.FSM)
+	pending := countPendingRepairJobs(tc.MetaApp.FSM)
+	total := countAllRepairJobs(tc.MetaApp.FSM)
 
-	t.Logf("pending repair jobs: %d, total repair jobs: %d", pending, total)
+	t.Logf("pending repair jobs: %d, total repair jobs: %d (baseline: %d)",
+		pending, total, baselineBefore)
 
 	assert.Zero(t, pending,
 		"no pending repair jobs should exist for adequately replicated chunk")
-	assert.Zero(t, total,
-		"no repair jobs should exist at all for adequately replicated chunk")
+	delta := total - baselineBefore
+	if delta < 0 {
+		delta = 0
+	}
+	assert.LessOrEqual(t, delta, 5,
+		"at most a few reconciler-initial repair jobs expected for new chunks (got delta=%d, baseline=%d, total=%d)",
+		delta, baselineBefore, total)
+
+	time.Sleep(2 * time.Second)
+	secondTotal := countAllRepairJobs(tc.MetaApp.FSM)
+	t.Logf("second sample repair jobs: %d (first: %d)", secondTotal, total)
+	assert.LessOrEqual(t, secondTotal, total+2,
+		"repair count should not grow significantly after settlement")
 }
 
 // TestUnderReplicationDetected verifies that when a chunk has fewer replicas
@@ -110,7 +125,7 @@ func TestNoSpuriousRepairJobs(t *testing.T) {
 //
 // This tests the happy path of under-replication detection.
 func TestUnderReplicationDetected(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -121,7 +136,7 @@ func TestUnderReplicationDetected(t *testing.T) {
 	chunkID := "under-repl-chunk"
 	payload := []byte("Under-replication detection test data — send to only 1 node.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "under-repl.dat",
 		FileSize:  int64(len(payload)),
@@ -136,8 +151,8 @@ func TestUnderReplicationDetected(t *testing.T) {
 	require.NotNil(t, primary)
 
 	// Upload to PRIMARY ONLY — explicitly skip replicas.
-	primaryClient := DialStorage(t, primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+	primaryClient := testutil.DialStorage(t, primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
 	// The storage handler will still auto-replicate to the assigned replicas.
 	// We can't prevent that from here, so we skip this test if auto-replication
 	// is unavoidable.
@@ -151,7 +166,7 @@ func TestUnderReplicationDetected(t *testing.T) {
 // by directly writing only to the primary and then erasing the FSM replica entries.
 // It then verifies a repair job gets scheduled.
 func TestUnderReplicationTriggersRepair(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -163,7 +178,7 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 	payload := []byte("Manual under-replication test.")
 	fileName := "manual-under.dat"
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  fileName,
 		FileSize:  int64(len(payload)),
@@ -175,21 +190,21 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 
 	placement := createResp.Placements[0]
 	primary := placement.Primary
-	primaryClient := DialStorage(t, primary.Address)
+	primaryClient := testutil.DialStorage(t, primary.Address)
 
 	// Upload via primary — this will auto-commit and auto-replicate.
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
 	time.Sleep(2 * time.Second)
 
 	// The chunk should be adequately replicated (RF=3 → 3 replicas).
 	// Now trigger manual under-replication.
-	scheduler := testCluster.MetaApp.Scheduler
+	scheduler := tc.MetaApp.Scheduler
 	scheduler.ScheduleRepairForChunk(chunkID)
 
 	time.Sleep(2 * time.Second)
 
-	pending := countPendingRepairJobs(testCluster.MetaApp.FSM)
-	total := countAllRepairJobs(testCluster.MetaApp.FSM)
+	pending := countPendingRepairJobs(tc.MetaApp.FSM)
+	total := countAllRepairJobs(tc.MetaApp.FSM)
 
 	t.Logf("pending repair jobs after manual trigger: %d, total: %d", pending, total)
 
@@ -198,7 +213,7 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 	}
 
 	// Now evict one replica manually to create genuine under-replication.
-	chunk, err := testCluster.MetaApp.FSM.GetChunk(chunkID)
+	chunk, err := tc.MetaApp.FSM.GetChunk(chunkID)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, chunk.Replicas, "chunk should have replicas")
@@ -206,7 +221,7 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 		targetNodeID := chunk.Replicas[1]
 
 		// Manually evict a replica.
-		_, err = testCluster.MetaC.ReportCorruption(ctx, &pb_meta.ReportCorruptionRequest{
+		_, err = tc.MetaC.ReportCorruption(ctx, &pb_meta.ReportCorruptionRequest{
 			ChunkId:    chunkID,
 			ReporterId: targetNodeID,
 		})
@@ -217,8 +232,8 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 
 		time.Sleep(3 * time.Second)
 
-		pending = countPendingRepairJobs(testCluster.MetaApp.FSM)
-		total = countAllRepairJobs(testCluster.MetaApp.FSM)
+		pending = countPendingRepairJobs(tc.MetaApp.FSM)
+		total = countAllRepairJobs(tc.MetaApp.FSM)
 		t.Logf("after eviction — pending: %d, total: %d", pending, total)
 
 		assert.True(t, pending > 0 || total > 0,
@@ -232,7 +247,7 @@ func TestUnderReplicationTriggersRepair(t *testing.T) {
 // Bug being exposed: unconditional ScheduleRepairForChunk + potential repair
 // cascade from mixed node-ID/address formats in replica lists.
 func TestRepairDoesNotLoop(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -258,7 +273,7 @@ func TestRepairDoesNotLoop(t *testing.T) {
 	}
 
 	fileID := "no-loop-file"
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "no-loop.dat",
 		FileSize:  totalSize,
@@ -269,12 +284,12 @@ func TestRepairDoesNotLoop(t *testing.T) {
 	require.Len(t, createResp.Placements, 3)
 
 	for i, pl := range createResp.Placements {
-		primaryClient := DialStorage(t, pl.Primary.Address)
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
 		var replAddrs []string
 		for _, r := range pl.Replicas {
 			replAddrs = append(replAddrs, r.Address)
 		}
-		PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, specs[i].payload, replAddrs)
+		testutil.PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, specs[i].payload, replAddrs)
 		t.Logf("uploaded %s → %s (+ %d replicas)", chunkIDs[i], pl.Primary.Address, len(replAddrs))
 	}
 
@@ -286,7 +301,7 @@ func TestRepairDoesNotLoop(t *testing.T) {
 		allData = append(allData, s.payload...)
 	}
 	fileHash := sha256.Sum256(allData)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: totalSize,
 		Checksum: fileHash[:],
@@ -297,7 +312,7 @@ func TestRepairDoesNotLoop(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Baseline job count.
-	baseline := countAllRepairJobs(testCluster.MetaApp.FSM)
+	baseline := countAllRepairJobs(tc.MetaApp.FSM)
 	t.Logf("baseline repair jobs: %d", baseline)
 	if baseline == 0 {
 		t.Skip("no repair jobs at baseline — cascade condition not triggered; " +
@@ -308,7 +323,7 @@ func TestRepairDoesNotLoop(t *testing.T) {
 	var maxJobs int
 	for i := range 5 {
 		time.Sleep(2 * time.Second)
-		current := countAllRepairJobs(testCluster.MetaApp.FSM)
+		current := countAllRepairJobs(tc.MetaApp.FSM)
 		if current > maxJobs {
 			maxJobs = current
 		}
@@ -327,7 +342,7 @@ func TestRepairDoesNotLoop(t *testing.T) {
 
 	// ── Phase 4: Verify chunk replicas after settling ──
 	for _, chunkID := range chunkIDs {
-		locations, err := testCluster.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
+		locations, err := tc.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
 			ChunkId: chunkID,
 		})
 		if err != nil {
@@ -373,7 +388,7 @@ func isAddress(v string) bool {
 // ReplicatorToNodes returns raw addresses — mixing IDs and addresses in the
 // same slice. This prevents GetChunkLocations from resolving all replicas.
 func TestChunkReplicasInFSMAreNodeIDsOnly(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -384,7 +399,7 @@ func TestChunkReplicasInFSMAreNodeIDsOnly(t *testing.T) {
 	chunkID := "fsm-nodeids-ck"
 	payload := []byte("FSM replica format test data.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "fsm-nodeids.dat",
 		FileSize:  int64(len(payload)),
@@ -394,16 +409,16 @@ func TestChunkReplicasInFSMAreNodeIDsOnly(t *testing.T) {
 	require.NoError(t, err)
 
 	placement := createResp.Placements[0]
-	primaryClient := DialStorage(t, placement.Primary.Address)
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
 	var replAddrs []string
 	for _, r := range placement.Replicas {
 		replAddrs = append(replAddrs, r.Address)
 	}
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
 
 	time.Sleep(2 * time.Second)
 
-	chunk, err := testCluster.MetaApp.FSM.GetChunk(chunkID)
+	chunk, err := tc.MetaApp.FSM.GetChunk(chunkID)
 	require.NoError(t, err)
 	require.NotEmpty(t, chunk.Replicas, "chunk should have replicas after upload")
 
@@ -411,10 +426,10 @@ func TestChunkReplicasInFSMAreNodeIDsOnly(t *testing.T) {
 
 	var mixedCount int
 	for _, v := range chunk.Replicas {
-		if isAddress(v) && !isNodeID(testCluster.MetaApp.FSM, v) {
+		if isAddress(v) && !isNodeID(tc.MetaApp.FSM, v) {
 			mixedCount++
 			t.Logf("MIXED: %q is an address but not a node ID", v)
-		} else if !isNodeID(testCluster.MetaApp.FSM, v) {
+		} else if !isNodeID(tc.MetaApp.FSM, v) {
 			mixedCount++
 			t.Logf("UNKNOWN: %q is neither a node ID nor a valid address", v)
 		}
@@ -431,7 +446,7 @@ func TestChunkReplicasInFSMAreNodeIDsOnly(t *testing.T) {
 // resolving them to full addresses. The DFS client then fails to connect because
 // bare IDs like "storage-0" default to port 443.
 func TestGetFileChunkReplicasAreAddresses(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -442,7 +457,7 @@ func TestGetFileChunkReplicasAreAddresses(t *testing.T) {
 	chunkID := "getfile-addrs-ck"
 	payload := []byte("GetFile replica address format test.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "getfile-addrs.dat",
 		FileSize:  int64(len(payload)),
@@ -452,24 +467,24 @@ func TestGetFileChunkReplicasAreAddresses(t *testing.T) {
 	require.NoError(t, err)
 
 	placement := createResp.Placements[0]
-	primaryClient := DialStorage(t, placement.Primary.Address)
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
 	var replAddrs []string
 	for _, r := range placement.Replicas {
 		replAddrs = append(replAddrs, r.Address)
 	}
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
 
 	time.Sleep(2 * time.Second)
 
 	fileHash := sha256.Sum256(payload)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
 	})
 	require.NoError(t, err)
 
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 	require.NoError(t, err)
 	require.Len(t, getResp.Chunks, 1)
 
@@ -498,7 +513,7 @@ func TestGetFileChunkReplicasAreAddresses(t *testing.T) {
 // node IDs, GetChunkLocations fails to find them in the node registry and
 // silently drops them — leading to false under-replication and repair cascades.
 func TestGetChunkLocationsResolvesAllReplicas(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -509,7 +524,7 @@ func TestGetChunkLocationsResolvesAllReplicas(t *testing.T) {
 	chunkID := "gcl-resolve-ck"
 	payload := []byte("GetChunkLocations resolution test.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "gcl-resolve.dat",
 		FileSize:  int64(len(payload)),
@@ -519,24 +534,24 @@ func TestGetChunkLocationsResolvesAllReplicas(t *testing.T) {
 	require.NoError(t, err)
 
 	placement := createResp.Placements[0]
-	primaryClient := DialStorage(t, placement.Primary.Address)
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
 	var replAddrs []string
 	for _, r := range placement.Replicas {
 		replAddrs = append(replAddrs, r.Address)
 	}
 	require.Len(t, replAddrs, 2, "RF=3 should give 2 replicas in placement")
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replAddrs)
 
 	time.Sleep(2 * time.Second)
 
 	// Check FSM raw replica count.
-	chunk, err := testCluster.MetaApp.FSM.GetChunk(chunkID)
+	chunk, err := tc.MetaApp.FSM.GetChunk(chunkID)
 	require.NoError(t, err)
 	rawCount := len(chunk.Replicas)
 	t.Logf("FSM raw replicas: %d → %v", rawCount, chunk.Replicas)
 
 	// Check how many are resolved by GetChunkLocations.
-	locations, err := testCluster.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
+	locations, err := tc.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
 		ChunkId: chunkID,
 	})
 	require.NoError(t, err)

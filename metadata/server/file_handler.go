@@ -108,6 +108,9 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
+	if file.Status != fsm.FileStatusComplete {
+		return nil, status.Errorf(codes.FailedPrecondition, "file %s is not ready (status: %s)", req.FileId, file.Status)
+	}
 	// get all chunks for this file in order
 	chunks, err := h.deps.FSM.GetFileChunks(req.FileId)
 	if err != nil {
@@ -118,13 +121,23 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 	pbChunks := make([]*pb.ChunkInfo, 0, len(chunks))
 
 	for _, ck := range chunks {
+		resolvedAddrs := make([]string, 0, len(ck.Replicas))
+		for _, rep := range ck.Replicas {
+			node, err := h.deps.FSM.GetNode(rep)
+			if err == nil && node.Address != "" {
+				resolvedAddrs = append(resolvedAddrs, node.Address)
+			} else {
+				resolvedAddrs = append(resolvedAddrs, rep)
+			}
+		}
+
 		pbChunks = append(pbChunks, &pb.ChunkInfo{
 			ChunkId:    ck.ChunkID,
 			FileId:     ck.FileID,
 			ChunkIndex: int32(ck.ChunkIndex),
 			Size:       ck.Size,
 			Checksum:   ck.Checksum,
-			Replicas:   ck.Replicas,
+			Replicas:   resolvedAddrs,
 			Status:     string(ck.Status),
 		})
 	}
@@ -181,6 +194,9 @@ func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFile
 
 	pbFiles := make([]*pb.FileInfo, 0, len(files))
 	for _, f := range files {
+		if f.Status != fsm.FileStatusComplete {
+			continue
+		}
 		pbFiles = append(pbFiles, &pb.FileInfo{
 			FileId:    f.FileID,
 			FileName:  f.Filename,

@@ -237,7 +237,7 @@ func TestFileStatusWithoutCommitFile(t *testing.T) {
 	chunkID := "no-commit-chunk"
 	payload := []byte("File without CommitFile call — should remain 'creating'.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "no-commit.dat",
 		FileSize:  int64(len(payload)),
@@ -247,17 +247,21 @@ func TestFileStatusWithoutCommitFile(t *testing.T) {
 	require.NoError(t, err)
 
 	placement := createResp.Placements[0]
-	primaryClient := DialStorage(t, placement.Primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
 
 	time.Sleep(1 * time.Second)
 
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
-	require.NoError(t, err)
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 
-	t.Logf("file status (no CommitFile): %s", getResp.File.Status)
-	assert.Equal(t, "creating", getResp.File.Status,
-		"file should remain in 'creating' status when CommitFile is not called")
+	if err == nil {
+		t.Logf("file status (no CommitFile): %s", getResp.File.Status)
+	}
+
+	require.Error(t, err, "GetFile should reject files in 'creating' status")
+	assert.Contains(t, err.Error(), "not ready",
+		"error should indicate file is not ready")
+	t.Logf("GetFile correctly rejected non-committed file: %v", err)
 }
 
 // TestFileStatusWithCommitFile verifies that after uploading chunks AND
@@ -272,7 +276,7 @@ func TestFileStatusWithCommitFile(t *testing.T) {
 	chunkID := "with-commit-chunk"
 	payload := []byte("File with CommitFile call — should become 'complete'.")
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "with-commit.dat",
 		FileSize:  int64(len(payload)),
@@ -282,20 +286,20 @@ func TestFileStatusWithCommitFile(t *testing.T) {
 	require.NoError(t, err)
 
 	placement := createResp.Placements[0]
-	primaryClient := DialStorage(t, placement.Primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
 
 	time.Sleep(1 * time.Second)
 
 	fileHash := sha256.Sum256(payload)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
 	})
 	require.NoError(t, err)
 
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 	require.NoError(t, err)
 
 	t.Logf("file status (with CommitFile): %s", getResp.File.Status)
@@ -312,7 +316,7 @@ func TestFileStatusWithCommitFile(t *testing.T) {
 //
 // This is the golden test for both Bug 1 (file commit) and Bug 2 (replica addresses).
 func TestFullUploadDownloadRoundTrip(t *testing.T) {
-	if len(testCluster.StorageNodes) < 3 {
+	if len(tc.StorageNodes) < 3 {
 		t.Skip("needs 3+ storage nodes")
 	}
 
@@ -331,7 +335,7 @@ func TestFullUploadDownloadRoundTrip(t *testing.T) {
 		totalSize += int64(len(p))
 	}
 
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "golden.dat",
 		FileSize:  totalSize,
@@ -342,12 +346,12 @@ func TestFullUploadDownloadRoundTrip(t *testing.T) {
 	require.Len(t, createResp.Placements, 3)
 
 	for i, pl := range createResp.Placements {
-		primaryClient := DialStorage(t, pl.Primary.Address)
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
 		var replAddrs []string
 		for _, r := range pl.Replicas {
 			replAddrs = append(replAddrs, r.Address)
 		}
-		PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, payloads[i], replAddrs)
+		testutil.PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, payloads[i], replAddrs)
 	}
 
 	time.Sleep(2 * time.Second)
@@ -357,14 +361,14 @@ func TestFullUploadDownloadRoundTrip(t *testing.T) {
 		allData = append(allData, p...)
 	}
 	fileHash := sha256.Sum256(allData)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: totalSize,
 		Checksum: fileHash[:],
 	})
 	require.NoError(t, err)
 
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 	require.NoError(t, err)
 	assert.Equal(t, "complete", getResp.File.Status,
 		"file should be 'complete' after full upload+commit")
@@ -383,13 +387,13 @@ func TestFullUploadDownloadRoundTrip(t *testing.T) {
 	}
 
 	for i, pl := range createResp.Placements {
-		primaryClient := DialStorage(t, pl.Primary.Address)
-		got := GetChunkData(t, ctx, primaryClient, chunkIDs[i])
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
+		got := testutil.GetChunkData(t, ctx, primaryClient, chunkIDs[i])
 		assert.Equal(t, payloads[i], got, "chunk %d data mismatch on primary", i)
 
 		for _, r := range pl.Replicas {
-			replClient := DialStorage(t, r.Address)
-			replGot := GetChunkData(t, ctx, replClient, chunkIDs[i])
+			replClient := testutil.DialStorage(t, r.Address)
+			replGot := testutil.GetChunkData(t, ctx, replClient, chunkIDs[i])
 			assert.Equal(t, payloads[i], replGot,
 				"chunk %d data mismatch on replica %s", i, r.Address)
 		}

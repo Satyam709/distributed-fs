@@ -28,10 +28,10 @@ func (h *MetadataServiceHandler) CommitChunk(ctx context.Context, req *pb.Commit
 		return nil, status.Errorf(codes.Internal, "error proposing commit-chunk command: %v", err)
 	}
 
-	// If confirmed replica count is below replication factor, schedule repair.
-	if _, err := h.deps.FSM.GetChunkLocations(req.ChunkId); err != nil {
+	locations, err := h.deps.FSM.GetChunkLocations(req.ChunkId)
+	if err != nil {
 		h.deps.Logger.Warn("cannot check chunk locations after commit", "chunkID", req.ChunkId, "err", err.Error())
-	} else {
+	} else if len(locations) < h.deps.ReplicationFactor {
 		h.deps.Scheduler.ScheduleRepairForChunk(req.ChunkId)
 	}
 
