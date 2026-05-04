@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package meta_storage
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -43,7 +45,7 @@ func TestCommitFileWithChecksumSucceeds(t *testing.T) {
 	fileHash := sha256.Sum256(payload)
 
 	// ── 1. CreateFile (no checksum at this point) ──
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "checksum-test.dat",
 		FileSize:  int64(len(payload)),
@@ -55,17 +57,17 @@ func TestCommitFileWithChecksumSucceeds(t *testing.T) {
 
 	// ── 2. Upload chunk ──
 	pl := createResp.Placements[0]
-	primaryClient := DialStorage(t, pl.Primary.Address)
+	primaryClient := testutil.DialStorage(t, pl.Primary.Address)
 	var replicaAddrs []string
 	for _, r := range pl.Replicas {
 		replicaAddrs = append(replicaAddrs, r.Address)
 	}
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 
 	time.Sleep(1 * time.Second) // let CommitChunk propagate
 
 	// ── 3. CommitFile WITH a real checksum ──
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
@@ -89,7 +91,7 @@ func TestCommitFileStoresChecksum(t *testing.T) {
 	fileHash := sha256.Sum256(payload)
 
 	// ── 1. CreateFile ──
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "checksum-stored.dat",
 		FileSize:  int64(len(payload)),
@@ -100,17 +102,17 @@ func TestCommitFileStoresChecksum(t *testing.T) {
 
 	// ── 2. Upload chunk ──
 	pl := createResp.Placements[0]
-	primaryClient := DialStorage(t, pl.Primary.Address)
+	primaryClient := testutil.DialStorage(t, pl.Primary.Address)
 	var replicaAddrs []string
 	for _, r := range pl.Replicas {
 		replicaAddrs = append(replicaAddrs, r.Address)
 	}
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 
 	time.Sleep(1 * time.Second)
 
 	// ── 3. CommitFile with checksum ──
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
@@ -118,7 +120,7 @@ func TestCommitFileStoresChecksum(t *testing.T) {
 	require.NoError(t, err, "CommitFile should succeed")
 
 	// ── 4. GetFile → verify status is complete ──
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
 		FileId: fileID,
 	})
 	require.NoError(t, err)
@@ -142,7 +144,7 @@ func TestCommitFileBeforeAllChunksComplete(t *testing.T) {
 	fileID := "checksum-early-commit"
 
 	// CreateFile with 2 chunks but don't upload anything
-	_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "early-commit.dat",
 		FileSize:  1024,
@@ -152,7 +154,7 @@ func TestCommitFileBeforeAllChunksComplete(t *testing.T) {
 	require.NoError(t, err)
 
 	// CommitFile should fail — chunks are still in "allocated" status
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: 1024,
 		Checksum: nil,

@@ -1,7 +1,7 @@
 //go:build integration
 
-// Package integration contains end-to-end integration tests that exercise
-// the dfsclient.Client SDK against a fully running multi-node DFS cluster
+// Package e2e contains end-to-end integration tests that exercise the
+// dfsclient.Client SDK against a fully running multi-node DFS cluster
 // (3 metadata + 3 storage nodes). These tests validate the complete data
 // pipeline: client SDK → metadata (Raft) → storage (gRPC streaming) and
 // back, including checksum integrity verification.
@@ -39,132 +39,19 @@
 //   - Delete file
 //   - Upload then download round-trip
 //   - Multiple file upload, list, download each
-package integration
+package e2e
 
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/satyam709/distributed-fs/client/dfsclient"
-	"github.com/satyam709/distributed-fs/internal/logging"
-	"github.com/satyam709/distributed-fs/internal/retry"
-	"github.com/satyam709/distributed-fs/storage"
-	"github.com/satyam709/distributed-fs/storage/metaclient"
-	"github.com/satyam709/distributed-fs/storage/store"
+	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
-
-// ---------------------------------------------------------------------------
-// FullCluster — multi-metadata + multi-storage cluster for client E2E tests.
-// ---------------------------------------------------------------------------
-
-// fullCluster wraps a multi-metadata Raft cluster plus multiple storage nodes
-// suitable for exercising the dfsclient.Client SDK end-to-end.
-type fullCluster struct {
-	MetaCluster *MultiMetaCluster
-
-	storageNodes []*storage.StorageNode
-	storageAddrs []string
-	cleanups     []func()
-}
-
-// startFullCluster boots nMeta metadata nodes (Raft cluster) and nStorage
-// storage nodes, all in-process. The caller MUST call shutdown().
-func startFullCluster(t *testing.T, nMeta, nStorage int) *fullCluster {
-	t.Helper()
-
-	fc := &fullCluster{}
-
-	fc.MetaCluster = StartMultiMetadataCluster(t, nMeta)
-
-	metaAddrs := make([]string, len(fc.MetaCluster.Addrs))
-	copy(metaAddrs, fc.MetaCluster.Addrs)
-
-	logger := logging.NewCLogger()
-	for i := 0; i < nStorage; i++ {
-		dir := t.TempDir()
-
-		cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
-			store.WithDbPath[[]byte](dir),
-		)
-		if err != nil {
-			t.Fatalf("checksum store %d: %v", i, err)
-		}
-		if err := cs.Open(); err != nil {
-			t.Fatalf("checksum open %d: %v", i, err)
-		}
-		fc.cleanups = append(fc.cleanups, cs.CleanUp)
-
-		ds, err := store.NewDiskStore(
-			store.WithChecksumStore(cs),
-			store.WithRootDir(dir),
-			store.WithTempDir(dir),
-			store.WithSplitLevel(2),
-			store.WithTotalSpace(256*1024*1024),
-		)
-		if err != nil {
-			t.Fatalf("disk store %d: %v", i, err)
-		}
-
-		rp := retry.Policy{MaxAttempts: 3, Base: 100 * time.Millisecond, Max: 5 * time.Second, Multiplier: 2.0}
-		mc, err := metaclient.NewMetadataClient(metaAddrs, rp, 10*time.Second)
-		if err != nil {
-			t.Fatalf("metaclient %d: %v", i, err)
-		}
-
-		nodeID := fmt.Sprintf("storage-%d", i)
-		cfg := storage.StorageNodeConfig{
-			NodeID:            nodeID,
-			GRPCAddr:          "127.0.0.1:0",
-			MetadataAddrs:     metaAddrs,
-			DataDir:           dir,
-			Timeout:           30 * time.Second,
-			HeartbeatInterval: 1 * time.Second,
-			ReplicationFactor: nStorage,
-			RPCTimeout:        10 * time.Second,
-			RetryMaxAttempts:  3,
-			RetryBaseBackoff:  100 * time.Millisecond,
-			RetryMaxBackoff:   5 * time.Second,
-		}
-
-		node, err := storage.NewStorageNode(cfg, logger, ds, mc)
-		if err != nil {
-			t.Fatalf("NewStorageNode %d: %v", i, err)
-		}
-		if err := node.Start(); err != nil {
-			t.Fatalf("StorageNode.Start %d: %v", i, err)
-		}
-
-		addr := node.BoundAddr()
-		t.Logf("e2e storage node %q on %s", nodeID, addr)
-
-		fc.storageNodes = append(fc.storageNodes, node)
-		fc.storageAddrs = append(fc.storageAddrs, addr)
-	}
-
-	time.Sleep(500 * time.Millisecond)
-
-	return fc
-}
-
-func (fc *fullCluster) shutdown() {
-	for _, n := range fc.storageNodes {
-		n.Stop()
-	}
-	fc.MetaCluster.Shutdown()
-	for i := len(fc.cleanups) - 1; i >= 0; i-- {
-		fc.cleanups[i]()
-	}
-}
-
-func (fc *fullCluster) metaAddrs() []string {
-	return fc.MetaCluster.Addrs
-}
 
 // ---------------------------------------------------------------------------
 // Client factory helper.
@@ -227,11 +114,13 @@ func verifyDownload(t *testing.T, outputPath string, expected []byte) {
 // TestClientE2E_SmallFileUploadDownload uploads a file smaller than one chunk
 // and verifies it can be downloaded byte-for-byte.
 func TestClientE2E_SmallFileUploadDownload(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	filePath, originalData := createTestFile(t, tmpDir, 42) // 42 bytes, well under 64KB chunk
 	remoteName := "small-file.bin"
@@ -258,11 +147,13 @@ func TestClientE2E_SmallFileUploadDownload(t *testing.T) {
 // TestClientE2E_MultiChunkUploadDownload uploads a file spanning multiple
 // chunks (larger than chunk size) and verifies the full round-trip.
 func TestClientE2E_MultiChunkUploadDownload(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	// 200KB → 4 chunks of 64KB (last chunk partial)
 	filePath, originalData := createTestFile(t, tmpDir, 200*1024)
@@ -288,11 +179,13 @@ func TestClientE2E_MultiChunkUploadDownload(t *testing.T) {
 // TestClientE2E_ExactChunkBoundaryFile uploads a file whose size exactly
 // equals one chunk (64KB) to test edge-case handling.
 func TestClientE2E_ExactChunkBoundaryFile(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	filePath, originalData := createTestFile(t, tmpDir, 64*1024) // exactly 64KB
 	remoteName := "boundary-file.bin"
@@ -317,11 +210,13 @@ func TestClientE2E_ExactChunkBoundaryFile(t *testing.T) {
 // TestClientE2E_EmptyFileRejected verifies that uploading an empty file
 // returns an error (as per the upload service's contract).
 func TestClientE2E_EmptyFileRejected(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	filePath, _ := createTestFile(t, tmpDir, 0)
 	remoteName := "empty.bin"
@@ -336,11 +231,13 @@ func TestClientE2E_EmptyFileRejected(t *testing.T) {
 // TestClientE2E_UploadReader uploads data from an io.Reader (bytes.Buffer)
 // instead of a file path, verifying the streaming upload path works.
 func TestClientE2E_UploadReader(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	originalData := make([]byte, 128*1024) // 128KB
 	for i := range originalData {
@@ -368,11 +265,13 @@ func TestClientE2E_UploadReader(t *testing.T) {
 // TestClientE2E_ListFiles uploads multiple files and verifies that List
 // returns all of them with correct metadata, including prefix filtering.
 func TestClientE2E_ListFiles(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	fileNames := []string{"report-q1.pdf", "report-q2.pdf", "data-log.csv", "notes.txt"}
 	for _, name := range fileNames {
@@ -429,11 +328,13 @@ func TestClientE2E_ListFiles(t *testing.T) {
 // TestClientE2E_DeleteFile uploads a file, deletes it, and verifies it's gone
 // from listings.
 func TestClientE2E_DeleteFile(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	filePath, _ := createTestFile(t, tmpDir, 32*1024) // 32KB
 	remoteName := "to-delete.bin"
@@ -487,11 +388,13 @@ func TestClientE2E_DeleteFile(t *testing.T) {
 // corruption during the upload pipeline. This was the bug that motivated
 // switching checksums from hex-encoded strings to raw [32]byte.
 func TestClientE2E_ChecksumIntegrity(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	// Use deterministic data so checksums are reproducible
 	filePath, originalData := createTestFile(t, tmpDir, 100*1024) // 100KB
@@ -515,11 +418,13 @@ func TestClientE2E_ChecksumIntegrity(t *testing.T) {
 // TestClientE2E_MultipleFiles uploads 3 files of different sizes, lists them,
 // downloads each, and verifies all content matches.
 func TestClientE2E_MultipleFiles(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	type testFile struct {
 		name string
@@ -566,11 +471,13 @@ func TestClientE2E_MultipleFiles(t *testing.T) {
 // TestClientE2E_ProgressCallback verifies that progress callbacks fire
 // during upload and download operations.
 func TestClientE2E_ProgressCallback(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	filePath, _ := createTestFile(t, tmpDir, 200*1024)
 	remoteName := "progress-test.bin"
@@ -611,11 +518,13 @@ func TestClientE2E_ProgressCallback(t *testing.T) {
 // TestClientE2E_NonExistentDownload verifies that downloading a file that
 // was never uploaded returns a proper error.
 func TestClientE2E_NonExistentDownload(t *testing.T) {
-	fc := startFullCluster(t, 3, 3)
-	defer fc.shutdown()
+	t.Parallel()
+
+	fc := testutil.StartFullCluster(t, 3, 3)
+	defer fc.Shutdown()
 
 	tmpDir := t.TempDir()
-	client := newE2EClient(t, fc.metaAddrs(), tmpDir)
+	client := newE2EClient(t, fc.MetaAddrs(), tmpDir)
 
 	outputPath := filepath.Join(tmpDir, "ghost.bin")
 	_, err := client.Download(context.Background(), "nonexistent-file.bin", outputPath, nil)

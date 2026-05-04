@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package meta_storage
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -28,7 +30,7 @@ func TestCreateFileDuplicate(t *testing.T) {
 	fileID := "dup-file-test"
 
 	// First creation succeeds.
-	_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "duplicate.txt",
 		FileSize:  42,
@@ -38,7 +40,7 @@ func TestCreateFileDuplicate(t *testing.T) {
 	require.NoError(t, err, "first CreateFile should succeed")
 
 	// Second creation with same ID fails.
-	_, err = testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	_, err = tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "duplicate-2.txt",
 		FileSize:  100,
@@ -60,7 +62,7 @@ func TestListFiles(t *testing.T) {
 	// Create two unique files.
 	ids := []string{"list-file-a", "list-file-b"}
 	for _, id := range ids {
-		_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 			FileId:    id,
 			FileName:  id + ".txt",
 			FileSize:  1,
@@ -71,7 +73,7 @@ func TestListFiles(t *testing.T) {
 	}
 
 	// List all files.
-	listResp, err := testCluster.MetaC.ListFiles(ctx, &pb_meta.ListFilesRequest{})
+	listResp, err := tc.MetaC.ListFiles(ctx, &pb_meta.ListFilesRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, listResp.Files, "ListFiles should return at least the files we created")
 
@@ -95,7 +97,7 @@ func TestDeleteFile(t *testing.T) {
 	fileID := "delete-me-file"
 
 	// Create.
-	_, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "to-delete.txt",
 		FileSize:  1,
@@ -105,7 +107,7 @@ func TestDeleteFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Delete.
-	delResp, err := testCluster.MetaC.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
+	delResp, err := tc.MetaC.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
 		FileId: fileID,
 	})
 	require.NoError(t, err)
@@ -113,7 +115,7 @@ func TestDeleteFile(t *testing.T) {
 
 	// GetFile should still return the file but with "deleted" status,
 	// since the FSM marks it as deleted rather than removing the entry.
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 	require.NoError(t, err)
 	assert.Equal(t, "deleted", getResp.File.Status,
 		"file should have 'deleted' status after DeleteFile")
@@ -124,7 +126,7 @@ func TestDeleteFileNotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := testCluster.MetaC.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
+	_, err := tc.MetaC.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
 		FileId: "no-such-file-ever",
 	})
 	require.Error(t, err)
@@ -138,7 +140,7 @@ func TestGetFileNotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
+	_, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
 		FileId: "totally-bogus-id",
 	})
 	require.Error(t, err)
@@ -158,7 +160,7 @@ func TestGetChunkLocationsAfterUpload(t *testing.T) {
 	payload := []byte("data to track chunk locations for")
 
 	// CreateFile.
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "locations.dat",
 		FileSize:  int64(len(payload)),
@@ -174,14 +176,14 @@ func TestGetChunkLocationsAfterUpload(t *testing.T) {
 	}
 
 	// Upload to primary with fan-out.
-	primaryClient := DialStorage(t, pl.Primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	primaryClient := testutil.DialStorage(t, pl.Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 
 	// Wait for CommitChunk to propagate through Raft.
 	time.Sleep(2 * time.Second)
 
 	// GetChunkLocations should now return nodes.
-	locResp, err := testCluster.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
+	locResp, err := tc.MetaC.GetChunkLocations(ctx, &pb_meta.GetChunkLocationsRequest{
 		ChunkId: chunkID,
 	})
 	require.NoError(t, err)
@@ -204,7 +206,7 @@ func TestChunkVerifyAfterUpload(t *testing.T) {
 	payload := []byte("integrity check data for integration test")
 
 	// CreateFile.
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "verify.dat",
 		FileSize:  int64(len(payload)),
@@ -215,13 +217,13 @@ func TestChunkVerifyAfterUpload(t *testing.T) {
 	pl := createResp.Placements[0]
 
 	// Upload to primary.
-	primaryClient := DialStorage(t, pl.Primary.Address)
-	checksum := PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+	primaryClient := testutil.DialStorage(t, pl.Primary.Address)
+	checksum := testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
 
 	// VerifyChunk — try each storage node since we know which one is primary.
 	var verifyResp *pb_storage.VerifyChunkResponse
 	var verifyErr error
-	for _, sc := range testCluster.StorageCs {
+	for _, sc := range tc.StorageCs {
 		verifyResp, verifyErr = sc.VerifyChunk(ctx, &pb_storage.VerifyChunkRequest{
 			ChunkId:  chunkID,
 			Checksum: checksum,
