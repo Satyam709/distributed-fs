@@ -37,11 +37,15 @@ type MockClient struct {
 	// If set, GetChunkLocations returns this error
 	GetChunkLocationsErr error
 
+	// If set, CommitFile returns this error
+	CommitFileErr error
+
 	// --- Call tracking ---
 	CreateFileCalls  []createFileCall
 	CommitChunkCalls []commitChunkCall
 	GetFileCalls     []string
 	DeleteFileCalls  []string
+	CommitFileCalls  []commitFileCall
 }
 
 type createFileCall struct {
@@ -56,6 +60,12 @@ type commitChunkCall struct {
 	FileID         string
 	ConfirmedNodes []string
 	Checksum       []byte
+}
+
+type commitFileCall struct {
+	FileID   string
+	FileSize int64
+	Checksum []byte
 }
 
 // NewMockClient creates a MockClient with empty state.
@@ -211,6 +221,24 @@ func (m *MockClient) GetChunkLocations(_ context.Context, chunkID string) ([]str
 		return c.Replicas, nil
 	}
 	return nil, fmt.Errorf("mock: chunk %q not found", chunkID)
+}
+
+func (m *MockClient) CommitFile(_ context.Context, fileID string, fileSize int64, checksum []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.CommitFileCalls = append(m.CommitFileCalls, commitFileCall{
+		FileID: fileID, FileSize: fileSize, Checksum: checksum,
+	})
+
+	if m.CommitFileErr != nil {
+		return m.CommitFileErr
+	}
+
+	if fi, ok := m.Files[fileID]; ok {
+		fi.Status = "complete"
+	}
+	return nil
 }
 
 func (m *MockClient) Close() error {

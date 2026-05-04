@@ -125,6 +125,11 @@ func TestUpload_HappyPath(t *testing.T) {
 		t.Errorf("CommitChunk called %d times, want 0 (handled by storage server)", len(mockMeta.CommitChunkCalls))
 	}
 
+	// Verify CommitFile was called once
+	if len(mockMeta.CommitFileCalls) != 1 {
+		t.Errorf("CommitFile called %d times, want 1", len(mockMeta.CommitFileCalls))
+	}
+
 	// Verify storage PutChunk was called for each chunk
 	if len(mockStorage.PutCalls) != 3 {
 		t.Errorf("PutChunk called %d times, want 3", len(mockStorage.PutCalls))
@@ -765,7 +770,6 @@ func TestUploadThenDownload_EndToEnd(t *testing.T) {
 	for fid, fi := range mockMeta.Files {
 		if fi.FileName == "e2e.bin" {
 			fileID = fid
-			fi.Status = "complete"
 			break
 		}
 	}

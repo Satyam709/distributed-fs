@@ -14,7 +14,7 @@ var tc *testutil.TestCluster
 
 func TestMain(m *testing.M) {
 	t := &testingTShim{}
-	tc = testutil.StartTestCluster(t, 2)
+	tc = testutil.StartTestCluster(t, 3) // 1 metadata + 3 storage nodes
 	if t.failed {
 		fmt.Fprintf(os.Stderr, "cluster startup failed\n")
 		os.Exit(1)

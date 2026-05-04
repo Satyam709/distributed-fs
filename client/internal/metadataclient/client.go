@@ -59,6 +59,10 @@ type Client interface {
 	// DeleteFile marks a file as deleted in the metadata.
 	DeleteFile(ctx context.Context, fileID string) error
 
+	// CommitFile finalises a file upload by transitioning its status from
+	// "creating" to "complete" after validating all chunks are committed.
+	CommitFile(ctx context.Context, fileID string, fileSize int64, checksum []byte) error
+
 	// GetChunkLocations returns the live node addresses for a chunk.
 	GetChunkLocations(ctx context.Context, chunkID string) ([]string, error)
 

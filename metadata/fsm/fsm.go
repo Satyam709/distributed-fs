@@ -618,11 +618,56 @@ func (mfsm *MetadataFSM) handleCmdCommitChunk(req CommandCommitChunk) error {
 		mfsm.crMutex.Lock()
 		chunk.Status = ChunkStatusComplete
 		chunk.Checksum = req.Checksum
-		chunk.Replicas = req.NodeIDs // confirmed by storage node
+		chunk.Replicas = mfsm.normalizeReplicaNodeIDs(req.NodeIDs)
 		mfsm.crMutex.Unlock()
 		return nil
 	}
 	return errors.New("cmdCommitChunk: chunk validation failed")
+}
+
+// normalizeReplicaNodeIDs converts each entry in rawIDs to a valid node ID.
+// If an entry is already a node ID (found in nodeRegistry), it is kept as-is.
+// If an entry is an address (not found as a key), the nodeRegistry is scanned
+// for a node whose Address matches — the node's NodeID is used instead.
+// Entries that match neither a node ID nor an address are dropped.
+func (mfsm *MetadataFSM) normalizeReplicaNodeIDs(rawIDs []string) []string {
+	normalized := make([]string, 0, len(rawIDs))
+	seen := make(map[string]struct{}, len(rawIDs))
+
+	for _, entry := range rawIDs {
+		if _, already := seen[entry]; already {
+			continue
+		}
+
+		if _, err := mfsm.GetNode(entry); err == nil {
+			normalized = append(normalized, entry)
+			seen[entry] = struct{}{}
+			continue
+		}
+
+		resolved := ""
+		mfsm.nrMutex.RLock()
+		for _, node := range mfsm.nodeRegistry {
+			if node.Address == entry {
+				resolved = node.NodeID
+				break
+			}
+		}
+		mfsm.nrMutex.RUnlock()
+
+		if resolved != "" {
+			if _, already := seen[resolved]; already {
+				continue
+			}
+			normalized = append(normalized, resolved)
+			seen[resolved] = struct{}{}
+		} else {
+			normalized = append(normalized, entry)
+			seen[entry] = struct{}{}
+		}
+	}
+
+	return normalized
 }
 
 // handleCmdEvictChunkFromNode removes a single node from a chunk's

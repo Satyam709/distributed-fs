@@ -8,12 +8,11 @@ import (
 	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
+	"github.com/satyam709/distributed-fs/integration/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -37,7 +36,7 @@ func TestChunkSizePersisted(t *testing.T) {
 	chunkID := "chunksize-persist-chunk"
 	var chunkSize int64 = 4 * 1024 * 1024 // 4 MB
 
-	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "chunksize-test.dat",
 		FileSize:  10 * 1024 * 1024, // 10 MB file
@@ -46,7 +45,16 @@ func TestChunkSizePersisted(t *testing.T) {
 	})
 	require.NoError(t, err, "CreateFile should succeed")
 
-	// Retrieve the file and check chunk_size.
+	primaryClient := testutil.DialStorage(t, createResp.Placements[0].Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, []byte("chunks"), nil)
+	time.Sleep(500 * time.Millisecond)
+
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: 10 * 1024 * 1024,
+	})
+	require.NoError(t, err)
+
 	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
 		FileId: fileID,
 	})
@@ -74,7 +82,7 @@ func TestChunkSizePersistedDifferentValues(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 			FileId:    tt.fileID,
 			FileName:  tt.fileID + ".dat",
 			FileSize:  100 * 1024 * 1024, // 100 MB
@@ -82,6 +90,16 @@ func TestChunkSizePersistedDifferentValues(t *testing.T) {
 			ChunkIds:  []string{tt.fileID + "-chunk-0"},
 		})
 		require.NoError(t, err, "CreateFile(%s) should succeed", tt.fileID)
+
+		primaryClient := testutil.DialStorage(t, createResp.Placements[0].Primary.Address)
+		testutil.PutChunkData(t, ctx, primaryClient, tt.fileID+"-chunk-0", tt.fileID, []byte("chunks"), nil)
+		time.Sleep(500 * time.Millisecond)
+
+		_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+			FileId:   tt.fileID,
+			FileSize: 100 * 1024 * 1024,
+		})
+		require.NoError(t, err)
 	}
 
 	for _, tt := range tests {
@@ -104,12 +122,22 @@ func TestChunkSizeInListFiles(t *testing.T) {
 	fileID := "cs-list-file"
 	var chunkSize int64 = 2 * 1024 * 1024 // 2 MB
 
-	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "cs-list-test.dat",
 		FileSize:  20 * 1024 * 1024,
 		ChunkSize: chunkSize,
 		ChunkIds:  []string{fileID + "-chunk-0"},
+	})
+	require.NoError(t, err)
+
+	primaryClient := testutil.DialStorage(t, createResp.Placements[0].Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, fileID+"-chunk-0", fileID, []byte("cs-list"), nil)
+	time.Sleep(500 * time.Millisecond)
+
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: 20 * 1024 * 1024,
 	})
 	require.NoError(t, err)
 
@@ -178,6 +206,13 @@ func TestMultiChunkDownloadOffsetCorrectness(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second) // let commits propagate
+
+	// ── 2.5 Commit the file ──
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: totalSize,
+	})
+	require.NoError(t, err)
 
 	// ── 3. Verify chunk_size persisted ──
 	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{

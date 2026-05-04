@@ -9,12 +9,11 @@ import (
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	pb_storage "github.com/satyam709/distributed-fs/gen/proto/storage/v1"
+	"github.com/satyam709/distributed-fs/integration/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -59,25 +58,32 @@ func TestListFiles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Create two unique files.
 	ids := []string{"list-file-a", "list-file-b"}
 	for _, id := range ids {
-		_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 			FileId:    id,
 			FileName:  id + ".txt",
 			FileSize:  1,
-			ChunkSize: 4 * 1024 * 1024,
+			ChunkSize: 64 * 1024,
 			ChunkIds:  []string{id + "-chunk"},
+		})
+		require.NoError(t, err)
+
+		primaryClient := testutil.DialStorage(t, createResp.Placements[0].Primary.Address)
+		testutil.PutChunkData(t, ctx, primaryClient, id+"-chunk", id, []byte{42}, nil)
+		time.Sleep(500 * time.Millisecond)
+
+		_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+			FileId:   id,
+			FileSize: 1,
 		})
 		require.NoError(t, err)
 	}
 
-	// List all files.
 	listResp, err := tc.MetaC.ListFiles(ctx, &pb_meta.ListFilesRequest{})
 	require.NoError(t, err)
 	require.NotEmpty(t, listResp.Files, "ListFiles should return at least the files we created")
 
-	// Build a set of returned IDs and verify ours are present.
 	found := make(map[string]bool)
 	for _, f := range listResp.Files {
 		found[f.FileId] = true
@@ -96,29 +102,41 @@ func TestDeleteFile(t *testing.T) {
 
 	fileID := "delete-me-file"
 
-	// Create.
-	_, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "to-delete.txt",
 		FileSize:  1,
-		ChunkSize: 4 * 1024 * 1024,
+		ChunkSize: 64 * 1024,
 		ChunkIds:  []string{"delete-me-chunk"},
 	})
 	require.NoError(t, err)
 
-	// Delete.
+	primaryClient := testutil.DialStorage(t, createResp.Placements[0].Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, "delete-me-chunk", fileID, []byte{42}, nil)
+	time.Sleep(500 * time.Millisecond)
+
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: 1,
+	})
+	require.NoError(t, err)
+
 	delResp, err := tc.MetaC.DeleteFile(ctx, &pb_meta.DeleteFileRequest{
 		FileId: fileID,
 	})
 	require.NoError(t, err)
 	assert.True(t, delResp.Success)
 
-	// GetFile should still return the file but with "deleted" status,
-	// since the FSM marks it as deleted rather than removing the entry.
 	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	require.Error(t, err, "GetFile should reject deleted files")
+	t.Logf("GetFile after delete returns: %v", err)
+
+	listResp, err := tc.MetaC.ListFiles(ctx, &pb_meta.ListFilesRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, "deleted", getResp.File.Status,
-		"file should have 'deleted' status after DeleteFile")
+	for _, f := range listResp.Files {
+		assert.NotEqual(t, fileID, f.FileId, "deleted file should not appear in ListFiles")
+	}
+	_ = getResp
 }
 
 // TestDeleteFileNotFound verifies deleting a non-existent file returns NotFound.

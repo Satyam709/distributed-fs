@@ -223,3 +223,181 @@ func TestUploadMultiChunkFile(t *testing.T) {
 		assert.Equal(t, payloads[i], got, "chunk %d data mismatch", i)
 	}
 }
+
+// TestFileStatusWithoutCommitFile verifies that after uploading chunks but
+// NOT calling CommitFile, the file status remains "creating".
+//
+// Bug being exposed: the DFS client upload path never calls CommitFile,
+// so files stay in "creating" status forever.
+func TestFileStatusWithoutCommitFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fileID := "no-commit-file"
+	chunkID := "no-commit-chunk"
+	payload := []byte("File without CommitFile call — should remain 'creating'.")
+
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		FileId:    fileID,
+		FileName:  "no-commit.dat",
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{chunkID},
+	})
+	require.NoError(t, err)
+
+	placement := createResp.Placements[0]
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+
+	time.Sleep(1 * time.Second)
+
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+
+	if err == nil {
+		t.Logf("file status (no CommitFile): %s", getResp.File.Status)
+	}
+
+	require.Error(t, err, "GetFile should reject files in 'creating' status")
+	assert.Contains(t, err.Error(), "not available",
+		"error should indicate file is not available")
+	t.Logf("GetFile correctly rejected non-committed file: %v", err)
+}
+
+// TestFileStatusWithCommitFile verifies that after uploading chunks AND
+// calling CommitFile, the file status transitions to "complete".
+//
+// This is the expected happy path that Bug 1 should achieve automatically.
+func TestFileStatusWithCommitFile(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	fileID := "with-commit-file"
+	chunkID := "with-commit-chunk"
+	payload := []byte("File with CommitFile call — should become 'complete'.")
+
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		FileId:    fileID,
+		FileName:  "with-commit.dat",
+		FileSize:  int64(len(payload)),
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  []string{chunkID},
+	})
+	require.NoError(t, err)
+
+	placement := createResp.Placements[0]
+	primaryClient := testutil.DialStorage(t, placement.Primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, nil)
+
+	time.Sleep(1 * time.Second)
+
+	fileHash := sha256.Sum256(payload)
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: int64(len(payload)),
+		Checksum: fileHash[:],
+	})
+	require.NoError(t, err)
+
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	require.NoError(t, err)
+
+	t.Logf("file status (with CommitFile): %s", getResp.File.Status)
+	assert.Equal(t, "complete", getResp.File.Status,
+		"file should transition to 'complete' after CommitFile")
+
+	t.Logf("chunks in file: %d, replicas: %v",
+		len(getResp.Chunks), getResp.Chunks[0].Replicas)
+}
+
+// TestFullUploadDownloadRoundTrip exercises the complete upload→commit→download
+// flow for a multi-chunk file with replication, then verifies every chunk is
+// readable from every replica.
+//
+// This is the golden test for both Bug 1 (file commit) and Bug 2 (replica addresses).
+func TestFullUploadDownloadRoundTrip(t *testing.T) {
+	if len(tc.StorageNodes) < 3 {
+		t.Skip("needs 3+ storage nodes")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	fileID := "golden-roundtrip"
+	chunkIDs := []string{"golden-ck-0", "golden-ck-1", "golden-ck-2"}
+	payloads := [][]byte{
+		[]byte("Golden chunk zero data."),
+		[]byte("Golden chunk one data."),
+		[]byte("Golden chunk two data."),
+	}
+	var totalSize int64
+	for _, p := range payloads {
+		totalSize += int64(len(p))
+	}
+
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+		FileId:    fileID,
+		FileName:  "golden.dat",
+		FileSize:  totalSize,
+		ChunkSize: 4 * 1024 * 1024,
+		ChunkIds:  chunkIDs,
+	})
+	require.NoError(t, err)
+	require.Len(t, createResp.Placements, 3)
+
+	for i, pl := range createResp.Placements {
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
+		var replAddrs []string
+		for _, r := range pl.Replicas {
+			replAddrs = append(replAddrs, r.Address)
+		}
+		testutil.PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, payloads[i], replAddrs)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	var allData []byte
+	for _, p := range payloads {
+		allData = append(allData, p...)
+	}
+	fileHash := sha256.Sum256(allData)
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+		FileId:   fileID,
+		FileSize: totalSize,
+		Checksum: fileHash[:],
+	})
+	require.NoError(t, err)
+
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	require.NoError(t, err)
+	assert.Equal(t, "complete", getResp.File.Status,
+		"file should be 'complete' after full upload+commit")
+	assert.Equal(t, fileID, getResp.File.FileId)
+	assert.Equal(t, "golden.dat", getResp.File.FileName)
+	require.Len(t, getResp.Chunks, 3)
+
+	for i, ck := range getResp.Chunks {
+		assert.Equal(t, chunkIDs[i], ck.ChunkId)
+		assert.NotEmpty(t, ck.Replicas, "chunk %s should have replicas", ck.ChunkId)
+		for _, rep := range ck.Replicas {
+			assert.Contains(t, rep, ":",
+				"replica address %q for chunk %s should contain port", rep, ck.ChunkId)
+		}
+		t.Logf("chunk %s: %d replicas → %v", ck.ChunkId, len(ck.Replicas), ck.Replicas)
+	}
+
+	for i, pl := range createResp.Placements {
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
+		got := testutil.GetChunkData(t, ctx, primaryClient, chunkIDs[i])
+		assert.Equal(t, payloads[i], got, "chunk %d data mismatch on primary", i)
+
+		for _, r := range pl.Replicas {
+			replClient := testutil.DialStorage(t, r.Address)
+			replGot := testutil.GetChunkData(t, ctx, replClient, chunkIDs[i])
+			assert.Equal(t, payloads[i], replGot,
+				"chunk %d data mismatch on replica %s", i, r.Address)
+		}
+	}
+
+	t.Logf("golden round-trip verified: %d chunks, all replicas readable", len(chunkIDs))
+}
