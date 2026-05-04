@@ -109,7 +109,7 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 		return nil, status.Errorf(codes.NotFound, "file not found: %s", req.FileId)
 	}
 	if file.Status != fsm.FileStatusComplete {
-		return nil, status.Errorf(codes.FailedPrecondition, "file %s is not ready (status: %s)", req.FileId, file.Status)
+		return nil, status.Errorf(codes.NotFound, "file %s is not available (status: %s)", req.FileId, file.Status)
 	}
 	// get all chunks for this file in order
 	chunks, err := h.deps.FSM.GetFileChunks(req.FileId)

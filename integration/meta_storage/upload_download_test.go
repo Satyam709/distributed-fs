@@ -259,8 +259,8 @@ func TestFileStatusWithoutCommitFile(t *testing.T) {
 	}
 
 	require.Error(t, err, "GetFile should reject files in 'creating' status")
-	assert.Contains(t, err.Error(), "not ready",
-		"error should indicate file is not ready")
+	assert.Contains(t, err.Error(), "not available",
+		"error should indicate file is not available")
 	t.Logf("GetFile correctly rejected non-committed file: %v", err)
 }
 
