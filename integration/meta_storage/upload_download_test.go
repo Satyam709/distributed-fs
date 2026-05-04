@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package meta_storage
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -35,7 +37,7 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 	payload := []byte("Hello, distributed world! This is integration test data.")
 
 	// ── 1. CreateFile → get placement ──
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  fileName,
 		FileSize:  int64(len(payload)),
@@ -58,8 +60,8 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 	}
 
 	// ── 2. PutChunk to primary (with replica fan-out) ──
-	primaryClient := DialStorage(t, primary.Address)
-	checksum := PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	primaryClient := testutil.DialStorage(t, primary.Address)
+	checksum := testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 	t.Logf("PutChunk succeeded, checksum=%x", checksum)
 
 	// Give the storage node a moment to async-commit to metadata.
@@ -67,7 +69,7 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 
 	// ── 3. CommitFile with whole-file checksum ──
 	fileHash := sha256.Sum256(payload)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: int64(len(payload)),
 		Checksum: fileHash[:],
@@ -75,7 +77,7 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 	require.NoError(t, err, "CommitFile should succeed")
 
 	// ── 4. GetFile → verify metadata ──
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{
 		FileId: fileID,
 	})
 	require.NoError(t, err, "GetFile should succeed")
@@ -89,7 +91,7 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 		getResp.File.Status, len(getResp.Chunks), getResp.Chunks[0].Replicas)
 
 	// ── 5. GetChunk → verify data round-trip ──
-	downloaded := GetChunkData(t, ctx, primaryClient, chunkID)
+	downloaded := testutil.GetChunkData(t, ctx, primaryClient, chunkID)
 	assert.Equal(t, payload, downloaded,
 		"downloaded data must match uploaded data byte-for-byte")
 	t.Logf("data round-trip verified: %d bytes", len(downloaded))
@@ -99,7 +101,7 @@ func TestUploadAndDownloadSingleChunk(t *testing.T) {
 // secondary nodes. After uploading through the primary, the chunk should
 // also be readable from the replica.
 func TestUploadWithReplication(t *testing.T) {
-	if len(testCluster.StorageNodes) < 2 {
+	if len(tc.StorageNodes) < 2 {
 		t.Skip("replication test requires at least 2 storage nodes")
 	}
 
@@ -111,7 +113,7 @@ func TestUploadWithReplication(t *testing.T) {
 	payload := []byte("Replicated data for integration test — must appear on both nodes.")
 
 	// ── 1. CreateFile ──
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "replicated.bin",
 		FileSize:  int64(len(payload)),
@@ -132,15 +134,15 @@ func TestUploadWithReplication(t *testing.T) {
 	require.NotEmpty(t, replicaAddrs, "expected at least 1 replica")
 
 	// ── 2. PutChunk with replication ──
-	primaryClient := DialStorage(t, primary.Address)
-	PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
+	primaryClient := testutil.DialStorage(t, primary.Address)
+	testutil.PutChunkData(t, ctx, primaryClient, chunkID, fileID, payload, replicaAddrs)
 
 	// Wait for replication to complete.
 	time.Sleep(2 * time.Second)
 
 	// ── 3. Verify chunk is readable from the replica ──
-	replicaClient := DialStorage(t, replicaAddrs[0])
-	replicaData := GetChunkData(t, ctx, replicaClient, chunkID)
+	replicaClient := testutil.DialStorage(t, replicaAddrs[0])
+	replicaData := testutil.GetChunkData(t, ctx, replicaClient, chunkID)
 	assert.Equal(t, payload, replicaData,
 		"replica should serve identical data to what was uploaded")
 	t.Logf("replication verified: primary=%s, replica=%s, %d bytes",
@@ -167,7 +169,7 @@ func TestUploadMultiChunkFile(t *testing.T) {
 	}
 
 	// ── 1. CreateFile with 3 chunks ──
-	createResp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	createResp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    fileID,
 		FileName:  "multi.dat",
 		FileSize:  totalSize,
@@ -179,12 +181,12 @@ func TestUploadMultiChunkFile(t *testing.T) {
 
 	// ── 2. Upload each chunk to its assigned primary ──
 	for i, pl := range createResp.Placements {
-		primaryClient := DialStorage(t, pl.Primary.Address)
+		primaryClient := testutil.DialStorage(t, pl.Primary.Address)
 		var replicaAddrs []string
 		for _, r := range pl.Replicas {
 			replicaAddrs = append(replicaAddrs, r.Address)
 		}
-		PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, payloads[i], replicaAddrs)
+		testutil.PutChunkData(t, ctx, primaryClient, chunkIDs[i], fileID, payloads[i], replicaAddrs)
 		t.Logf("uploaded chunk %s → %s", chunkIDs[i], pl.Primary.Address)
 	}
 
@@ -196,7 +198,7 @@ func TestUploadMultiChunkFile(t *testing.T) {
 		allPayloads = append(allPayloads, p...)
 	}
 	fileHash := sha256.Sum256(allPayloads)
-	_, err = testCluster.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
+	_, err = tc.MetaC.CommitFile(ctx, &pb_meta.CommitFileRequest{
 		FileId:   fileID,
 		FileSize: totalSize,
 		Checksum: fileHash[:],
@@ -204,7 +206,7 @@ func TestUploadMultiChunkFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// ── 4. GetFile → verify all chunks tracked ──
-	getResp, err := testCluster.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
+	getResp, err := tc.MetaC.GetFile(ctx, &pb_meta.GetFileRequest{FileId: fileID})
 	require.NoError(t, err)
 	assert.Equal(t, "complete", getResp.File.Status)
 	require.Len(t, getResp.Chunks, 3)
@@ -216,8 +218,8 @@ func TestUploadMultiChunkFile(t *testing.T) {
 
 	// ── 5. Download each chunk and verify data ──
 	for i, pl := range createResp.Placements {
-		client := DialStorage(t, pl.Primary.Address)
-		got := GetChunkData(t, ctx, client, chunkIDs[i])
+		client := testutil.DialStorage(t, pl.Primary.Address)
+		got := testutil.GetChunkData(t, ctx, client, chunkIDs[i])
 		assert.Equal(t, payloads[i], got, "chunk %d data mismatch", i)
 	}
 }

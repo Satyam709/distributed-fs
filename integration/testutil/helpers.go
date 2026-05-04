@@ -1,18 +1,51 @@
-//go:build integration
-
-// Package integration contains integration tests that exercise the full
-// metadata ↔ storage node interaction over real gRPC. Tests in this package
-// start a single-node Raft metadata cluster and multiple storage nodes
-// in-process, mimicking a production topology without Docker.
+// Package testutil provides shared types and constructors for integration
+// tests across the integration/ hierarchy. It is a regular (non-test) package
+// so that sub-packages like metastore/, failover/, and e2e/ can import it.
 //
-// Run with: go test -tags integration -count=1 -timeout 120s ./integration/
-package integration
+// # Architecture
+//
+// The integration tests are split by concern into three sub-packages:
+//
+//	meta_storage/  — metadata↔storage gRPC interaction (shared cluster via TestMain)
+//	failover/   — Raft leader election and crash recovery (per-test clusters)
+//	e2e/        — dfsclient.Client SDK end-to-end (per-test clusters)
+//
+// # Running
+//
+//	make integration-test
+//	# or:
+//	go test -tags integration -count=1 -timeout 120s -v ./integration/...
+//	go test -tags integration -run TestHeartbeat ./integration/meta_storage/
+//
+// # Cluster Constructors
+//
+//	TestCluster (1 meta + N storage):
+//	    tc := StartTestCluster(t, 2)
+//	    defer tc.Shutdown()
+//
+//	MultiMetaCluster (N metadata Raft nodes):
+//	    mc := StartMultiMetadataCluster(t, 3)
+//	    defer mc.Shutdown()
+//
+//	FullCluster (N meta + N storage, for client SDK tests):
+//	    fc := StartFullCluster(t, 3, 3)
+//	    defer fc.Shutdown()
+//
+// # Conventions
+//
+//	Use unique file/chunk IDs per test to avoid collisions within shared clusters.
+//	Call defer cluster.Shutdown() after boot.
+//	Use context.WithTimeout for test deadlines.
+//	Packages without TestMain should use t.Parallel() where safe.
+package testutil
 
 import (
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"os"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,28 +63,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// ---------------------------------------------------------------------------
-// Port allocator — deterministic, no collisions within a test run.
-// ---------------------------------------------------------------------------
-
-var raftPort atomic.Int32
-
-func init() {
-	raftPort.Store(19100)
-}
-
-func nextRaftAddr() string {
-	port := raftPort.Add(1)
-	return fmt.Sprintf("127.0.0.1:%d", port)
-}
-
-// ---------------------------------------------------------------------------
-// TB — minimal interface satisfied by both *testing.T and testingTShim.
-// ---------------------------------------------------------------------------
-
-// TB is the subset of testing.TB used by StartTestCluster. This allows
-// the function to be called from TestMain (which has no *testing.T) via
-// a lightweight shim, as well as from normal test functions.
+// TB is the subset of testing.TB used by cluster constructors.
+// *testing.T implements this natively. Packages with TestMain provide
+// their own implementation (e.g. a testingTShim) that satisfies TB.
 type TB interface {
 	Helper()
 	Fatalf(format string, args ...any)
@@ -61,11 +75,24 @@ type TB interface {
 }
 
 // ---------------------------------------------------------------------------
-// TestCluster — a mini DFS cluster running inside a test process.
+// Port allocator
 // ---------------------------------------------------------------------------
 
-// TestCluster holds a running metadata node, multiple storage nodes,
-// and pre-dialled gRPC client connections to each.
+var raftPort atomic.Int32
+
+func init() {
+	raftPort.Store(20000 + int32(os.Getpid()%100)*300)
+}
+
+func nextRaftAddr() string {
+	port := raftPort.Add(1)
+	return fmt.Sprintf("127.0.0.1:%d", port)
+}
+
+// ---------------------------------------------------------------------------
+// TestCluster — 1 metadata + N storage
+// ---------------------------------------------------------------------------
+
 type TestCluster struct {
 	MetaApp  *metadata.MetadataApp
 	MetaAddr string
@@ -78,20 +105,13 @@ type TestCluster struct {
 	StorageCs    []pb_storage.StorageServiceClient
 	ReplCs       []pb_storage.ReplicationServiceClient
 
-	// cleanups tracks functions to run on shutdown (in LIFO order).
 	cleanups []func()
 }
 
-// StartTestCluster boots a 1-metadata + numStorage storage-node cluster.
-// The metadata node uses single-node Raft (bootstrap=true). Storage nodes
-// auto-register on Start() and begin heartbeating.
-//
-// The caller must call cluster.Shutdown() when done (typically via t.Cleanup).
 func StartTestCluster(t TB, numStorage int) *TestCluster {
 	t.Helper()
 	c := &TestCluster{}
 
-	// ── Metadata Node ──────────────────────────────────────────────
 	raftDir := t.TempDir()
 	metaCfg := metadata.NodeConfig{
 		NodeID:            "meta-test-1",
@@ -99,7 +119,7 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 		RaftAddr:          nextRaftAddr(),
 		RaftDir:           raftDir,
 		Bootstrap:         true,
-		ReplicationFactor: numStorage, // match storage count
+		ReplicationFactor: numStorage,
 		SuspectTimeout:    3 * time.Second,
 		DeadTimeout:       6 * time.Second,
 		WatcherInterval:   1 * time.Second,
@@ -124,7 +144,6 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 	c.MetaAddr = app.BoundGRPCAddr()
 	t.Logf("metadata gRPC listening on %s", c.MetaAddr)
 
-	// Dial metadata.
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	c.MetaConn, err = grpc.NewClient(c.MetaAddr, opts...)
 	if err != nil {
@@ -132,86 +151,25 @@ func StartTestCluster(t TB, numStorage int) *TestCluster {
 	}
 	c.MetaC = pb_meta.NewMetadataServiceClient(c.MetaConn)
 
-	// ── Storage Nodes ──────────────────────────────────────────────
 	logger := logging.NewCLogger()
 	for i := range numStorage {
-		dir := t.TempDir()
+		node, addr := startStorageNode(t, i, []string{c.MetaAddr}, logger, numStorage, &c.cleanups)
 
-		cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
-			store.WithDbPath[[]byte](dir),
-		)
-		if err != nil {
-			t.Fatalf("checksum store %d: %v", i, err)
-		}
-		if err := cs.Open(); err != nil {
-			t.Fatalf("checksum store open %d: %v", i, err)
-		}
-		c.cleanups = append(c.cleanups, cs.CleanUp)
-
-		ds, err := store.NewDiskStore(
-			store.WithChecksumStore(cs),
-			store.WithRootDir(dir),
-			store.WithTempDir(dir),
-			store.WithSplitLevel(2),
-			store.WithTotalSpace(256*1024*1024), // 256 MB virtual
-		)
-		if err != nil {
-			t.Fatalf("disk store %d: %v", i, err)
-		}
-
-		rp := retry.Policy{MaxAttempts: 3, Base: 100 * time.Millisecond, Max: 5 * time.Second, Multiplier: 2.0}
-		mc, err := metaclient.NewMetadataClient([]string{c.MetaAddr}, rp, 10*time.Second)
-		if err != nil {
-			t.Fatalf("metaclient %d: %v", i, err)
-		}
-
-		nodeID := fmt.Sprintf("storage-%d", i)
-		cfg := storage.StorageNodeConfig{
-			NodeID:            nodeID,
-			GRPCAddr:          "127.0.0.1:0",
-			MetadataAddrs:     []string{c.MetaAddr},
-			DataDir:           dir,
-			Timeout:           30 * time.Second,
-			HeartbeatInterval: 1 * time.Second,
-			ReplicationFactor: numStorage,
-			RPCTimeout:        10 * time.Second,
-			RetryMaxAttempts:  3,
-			RetryBaseBackoff:  100 * time.Millisecond,
-			RetryMaxBackoff:   5 * time.Second,
-		}
-
-		node, err := storage.NewStorageNode(cfg, logger, ds, mc)
-		if err != nil {
-			t.Fatalf("NewStorageNode %d: %v", i, err)
-		}
-		if err := node.Start(); err != nil {
-			t.Fatalf("StorageNode.Start %d: %v", i, err)
-		}
-
-		addr := node.BoundAddr()
-		t.Logf("storage node %q listening on %s", nodeID, addr)
-
-		c.StorageNodes = append(c.StorageNodes, node)
-		c.StorageAddrs = append(c.StorageAddrs, addr)
-
-		// Dial storage.
 		conn, err := grpc.NewClient(addr, opts...)
 		if err != nil {
 			t.Fatalf("dial storage %d: %v", i, err)
 		}
+		c.StorageNodes = append(c.StorageNodes, node)
+		c.StorageAddrs = append(c.StorageAddrs, addr)
 		c.StorageConns = append(c.StorageConns, conn)
 		c.StorageCs = append(c.StorageCs, pb_storage.NewStorageServiceClient(conn))
 		c.ReplCs = append(c.ReplCs, pb_storage.NewReplicationServiceClient(conn))
 	}
 
-	// Give storage nodes a moment to complete registration & first heartbeat.
 	time.Sleep(500 * time.Millisecond)
-
 	return c
 }
 
-// Shutdown tears down the cluster in reverse order: close client connections,
-// stop storage nodes, then stop metadata.
 func (c *TestCluster) Shutdown() {
 	for _, conn := range c.StorageConns {
 		_ = conn.Close()
@@ -231,21 +189,17 @@ func (c *TestCluster) Shutdown() {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-node metadata cluster for failover tests.
+// MultiMetaCluster — N metadata Raft nodes
 // ---------------------------------------------------------------------------
 
-// MultiMetaCluster holds multiple metadata nodes forming a Raft cluster,
-// plus pre-dialled gRPC connections to each. Used to test leader redirection
-// and failover scenarios.
 type MultiMetaCluster struct {
 	Apps     []*metadata.MetadataApp
-	Addrs    []string // gRPC addrs (leader at index 0 until failover)
+	Addrs    []string
 	Conns    []*grpc.ClientConn
 	Clients  []pb_meta.MetadataServiceClient
 	cleanups []func()
 }
 
-// Shutdown tears down all metadata nodes and connections.
 func (m *MultiMetaCluster) Shutdown() {
 	for _, conn := range m.Conns {
 		_ = conn.Close()
@@ -258,9 +212,6 @@ func (m *MultiMetaCluster) Shutdown() {
 	}
 }
 
-// StartMultiMetadataCluster boots numNodes metadata nodes as a Raft cluster.
-// The first node bootstraps; all others join using PeerAddrs pointing to node-1.
-// All nodes use deterministic raft ports and random gRPC ports.
 func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 	t.Helper()
 	mc := &MultiMetaCluster{}
@@ -269,14 +220,13 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 		t.Fatalf("StartMultiMetadataCluster requires at least 2 nodes, got %d", numNodes)
 	}
 
-	// Collect raft addrs for peer map.
 	raftAddrs := make(map[string]string, numNodes)
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		nodeID := fmt.Sprintf("meta-test-%d", i+1)
 		raftAddrs[nodeID] = nextRaftAddr()
 	}
 
-	for i := 0; i < numNodes; i++ {
+	for i := range numNodes {
 		nodeID := fmt.Sprintf("meta-test-%d", i+1)
 		raftDir := t.TempDir()
 
@@ -313,8 +263,6 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 		mc.Apps = append(mc.Apps, app)
 	}
 
-	// Start all nodes concurrently so Raft transports bind simultaneously,
-	// allowing the cluster to form correctly.
 	errCh := make(chan error, numNodes)
 	type result struct {
 		idx int
@@ -332,7 +280,6 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 		}(i, app)
 	}
 
-	// Collect results, ensuring all apps are running before proceeding.
 	runningApps := make([]*metadata.MetadataApp, numNodes)
 	for i := 0; i < numNodes; i++ {
 		select {
@@ -344,7 +291,6 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 	}
 	mc.Apps = runningApps
 
-	// Collect addrs in order.
 	mc.Addrs = make([]string, numNodes)
 	for i, app := range mc.Apps {
 		mc.Addrs[i] = app.BoundGRPCAddr()
@@ -352,10 +298,8 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 		t.Logf("metadata node %q gRPC on %s raft on %s", nodeID, mc.Addrs[i], raftAddrs[nodeID])
 	}
 
-	// Give Raft time to elect a leader.
 	time.Sleep(2 * time.Second)
 
-	// Dial all metadata nodes.
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	for _, addr := range mc.Addrs {
 		conn, err := grpc.NewClient(addr, opts...)
@@ -369,8 +313,6 @@ func StartMultiMetadataCluster(t TB, numNodes int) *MultiMetaCluster {
 	return mc
 }
 
-// LeaderIndex returns the index of the current Raft leader in the cluster,
-// or -1 if no leader is elected.
 func (m *MultiMetaCluster) LeaderIndex() int {
 	for i := range m.Apps {
 		leaderAddr := m.Apps[i].LeaderRaftAddr()
@@ -381,7 +323,6 @@ func (m *MultiMetaCluster) LeaderIndex() int {
 	return -1
 }
 
-// FollowerIndices returns the indices of all non-leader nodes.
 func (m *MultiMetaCluster) FollowerIndices() []int {
 	leader := m.LeaderIndex()
 	var followers []int
@@ -394,10 +335,120 @@ func (m *MultiMetaCluster) FollowerIndices() []int {
 }
 
 // ---------------------------------------------------------------------------
-// Utility helpers for writing tests.
+// FullCluster — N metadata + N storage (for client SDK E2E tests)
 // ---------------------------------------------------------------------------
 
-// DialStorage creates a new storage gRPC client to the given address.
+type FullCluster struct {
+	MetaCluster *MultiMetaCluster
+
+	StorageNodes []*storage.StorageNode
+	StorageAddrs []string
+	cleanups     []func()
+}
+
+func StartFullCluster(t TB, nMeta, nStorage int) *FullCluster {
+	t.Helper()
+	fc := &FullCluster{}
+
+	fc.MetaCluster = StartMultiMetadataCluster(t, nMeta)
+	metaAddrs := slices.Clone(fc.MetaCluster.Addrs)
+
+	logger := logging.NewCLogger()
+	for i := range nStorage {
+		node, addr := startStorageNode(t, i, metaAddrs, logger, nStorage, &fc.cleanups)
+		fc.StorageNodes = append(fc.StorageNodes, node)
+		fc.StorageAddrs = append(fc.StorageAddrs, addr)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	return fc
+}
+
+func (fc *FullCluster) Shutdown() {
+	for _, n := range fc.StorageNodes {
+		n.Stop()
+	}
+	fc.MetaCluster.Shutdown()
+	for i := len(fc.cleanups) - 1; i >= 0; i-- {
+		fc.cleanups[i]()
+	}
+}
+
+func (fc *FullCluster) MetaAddrs() []string {
+	return fc.MetaCluster.Addrs
+}
+
+// ---------------------------------------------------------------------------
+// startStorageNode — creates and starts a single storage node
+// ---------------------------------------------------------------------------
+
+// startStorageNode creates and starts a storage node connected to the given
+// metadata addresses. cleanups receives deferred cleanup functions (e.g.,
+// closing the checksum store). Returns the started node and its bound address.
+func startStorageNode(t TB, i int, metaAddrs []string, logger *logging.CLogger, replicationFactor int, cleanups *[]func()) (*storage.StorageNode, string) {
+	t.Helper()
+	dir := t.TempDir()
+
+	cs, err := store.NewChecksumIndexBoltDB[[]byte](store.ByteCodec{},
+		store.WithDbPath[[]byte](dir),
+	)
+	if err != nil {
+		t.Fatalf("checksum store %d: %v", i, err)
+	}
+	if err := cs.Open(); err != nil {
+		t.Fatalf("checksum store open %d: %v", i, err)
+	}
+	*cleanups = append(*cleanups, cs.CleanUp)
+
+	ds, err := store.NewDiskStore(
+		store.WithChecksumStore(cs),
+		store.WithRootDir(dir),
+		store.WithTempDir(dir),
+		store.WithSplitLevel(2),
+		store.WithTotalSpace(256*1024*1024),
+	)
+	if err != nil {
+		t.Fatalf("disk store %d: %v", i, err)
+	}
+
+	rp := retry.Policy{MaxAttempts: 3, Base: 100 * time.Millisecond, Max: 5 * time.Second, Multiplier: 2.0}
+	mc, err := metaclient.NewMetadataClient(metaAddrs, rp, 10*time.Second)
+	if err != nil {
+		t.Fatalf("metaclient %d: %v", i, err)
+	}
+
+	nodeID := fmt.Sprintf("storage-%d", i)
+	cfg := storage.StorageNodeConfig{
+		NodeID:            nodeID,
+		GRPCAddr:          "127.0.0.1:0",
+		MetadataAddrs:     metaAddrs,
+		DataDir:           dir,
+		Timeout:           30 * time.Second,
+		HeartbeatInterval: 1 * time.Second,
+		ReplicationFactor: replicationFactor,
+		RPCTimeout:        10 * time.Second,
+		RetryMaxAttempts:  3,
+		RetryBaseBackoff:  100 * time.Millisecond,
+		RetryMaxBackoff:   5 * time.Second,
+	}
+
+	node, err := storage.NewStorageNode(cfg, logger, ds, mc)
+	if err != nil {
+		t.Fatalf("NewStorageNode %d: %v", i, err)
+	}
+	if err := node.Start(); err != nil {
+		t.Fatalf("StorageNode.Start %d: %v", i, err)
+	}
+
+	addr := node.BoundAddr()
+	t.Logf("storage node %q listening on %s", nodeID, addr)
+	return node, addr
+}
+
+// ---------------------------------------------------------------------------
+// Utility helpers for writing tests
+// ---------------------------------------------------------------------------
+
 func DialStorage(t *testing.T, addr string) pb_storage.StorageServiceClient {
 	t.Helper()
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -408,9 +459,6 @@ func DialStorage(t *testing.T, addr string) pb_storage.StorageServiceClient {
 	return pb_storage.NewStorageServiceClient(conn)
 }
 
-// PutChunkData uploads a byte slice as a single-frame chunk to the given
-// storage service client and returns the checksum. The chunkID is set by
-// the caller. replicaAddrs optionally lists addresses for fan-out.
 func PutChunkData(t *testing.T, ctx context.Context, client pb_storage.StorageServiceClient,
 	chunkID, fileID string, data []byte, replicaAddrs []string,
 ) []byte {
@@ -449,8 +497,6 @@ func PutChunkData(t *testing.T, ctx context.Context, client pb_storage.StorageSe
 	return checksum[:]
 }
 
-// GetChunkData downloads a chunk from the given storage service client
-// and returns the reassembled bytes.
 func GetChunkData(t *testing.T, ctx context.Context, client pb_storage.StorageServiceClient, chunkID string) []byte {
 	t.Helper()
 	stream, err := client.GetChunk(ctx, &pb_storage.GetChunkRequest{ChunkId: chunkID})

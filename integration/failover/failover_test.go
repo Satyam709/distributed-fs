@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package failover
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb_meta "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
+	testutil "github.com/satyam709/distributed-fs/integration/testutil"
 	"github.com/satyam709/distributed-fs/internal/leaderclient"
 	"github.com/satyam709/distributed-fs/internal/retry"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,9 @@ import (
 // client calling a follower node receives a FailedPrecondition error with
 // the x-leader-grpc-addr trailer pointing to the current leader's gRPC address.
 func TestFollowerRedirect_ReturnsFailedPrecondition(t *testing.T) {
-	mc := StartMultiMetadataCluster(t, 3)
+	t.Parallel()
+
+	mc := testutil.StartMultiMetadataCluster(t, 3)
 	defer mc.Shutdown()
 
 	time.Sleep(1 * time.Second)
@@ -59,7 +62,9 @@ func TestFollowerRedirect_ReturnsFailedPrecondition(t *testing.T) {
 // TestLeaderAwareClient_FollowsRedirect verifies that LeaderAwareClient
 // transparently follows a leader redirect from a follower node.
 func TestLeaderAwareClient_FollowsRedirect(t *testing.T) {
-	mc := StartMultiMetadataCluster(t, 3)
+	t.Parallel()
+
+	mc := testutil.StartMultiMetadataCluster(t, 3)
 	defer mc.Shutdown()
 
 	leaderIdx := mc.LeaderIndex()
@@ -97,7 +102,9 @@ func TestLeaderAwareClient_FollowsRedirect(t *testing.T) {
 // the LeaderAwareClient follows the redirect to the new leader and
 // operations continue successfully.
 func TestLeaderCrash_ClientRecovers(t *testing.T) {
-	mc := StartMultiMetadataCluster(t, 3)
+	t.Parallel()
+
+	mc := testutil.StartMultiMetadataCluster(t, 3)
 	defer mc.Shutdown()
 
 	leaderIdx := mc.LeaderIndex()
@@ -138,7 +145,9 @@ func TestLeaderCrash_ClientRecovers(t *testing.T) {
 // TestLeaderCrash_ReadAfterFailover verifies that read operations survive
 // a leader crash via LeaderAwareClient redirect.
 func TestLeaderCrash_ReadAfterFailover(t *testing.T) {
-	mc := StartMultiMetadataCluster(t, 3)
+	t.Parallel()
+
+	mc := testutil.StartMultiMetadataCluster(t, 3)
 	defer mc.Shutdown()
 
 	leaderIdx := mc.LeaderIndex()

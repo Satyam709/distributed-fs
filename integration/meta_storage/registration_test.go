@@ -1,6 +1,6 @@
 //go:build integration
 
-package integration
+package meta_storage
 
 import (
 	"context"
@@ -26,7 +26,7 @@ func TestStorageNodesAutoRegistered(t *testing.T) {
 
 	// CreateFile needs live nodes for placement; if nodes didn't register
 	// this will fail with "error getting placement".
-	resp, err := testCluster.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
+	resp, err := tc.MetaC.CreateFile(ctx, &pb_meta.CreateFileRequest{
 		FileId:    "reg-probe-file",
 		FileName:  "probe.txt",
 		FileSize:  100,
@@ -49,7 +49,7 @@ func TestHeartbeatSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	hbResp, err := testCluster.MetaC.Heartbeat(ctx, &pb_meta.HeartbeatRequest{
+	hbResp, err := tc.MetaC.Heartbeat(ctx, &pb_meta.HeartbeatRequest{
 		NodeId:     "storage-0",
 		FreeSpace:  1024 * 1024 * 200,
 		ChunkCount: 0,
@@ -67,7 +67,7 @@ func TestHeartbeatUnregisteredNodeReturnsNotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := testCluster.MetaC.Heartbeat(ctx, &pb_meta.HeartbeatRequest{
+	_, err := tc.MetaC.Heartbeat(ctx, &pb_meta.HeartbeatRequest{
 		NodeId:     "ghost-node-99",
 		FreeSpace:  0,
 		ChunkCount: 0,
@@ -85,7 +85,7 @@ func TestNodeDeregistration(t *testing.T) {
 
 	// Register a temporary node.
 	nodeID := "temp-deregister-node"
-	_, err := testCluster.MetaC.RegisterNode(ctx, &pb_meta.RegisterNodeRequest{
+	_, err := tc.MetaC.RegisterNode(ctx, &pb_meta.RegisterNodeRequest{
 		NodeId:    nodeID,
 		Address:   "127.0.0.1:59999",
 		FreeSpace: 1000,
@@ -93,7 +93,7 @@ func TestNodeDeregistration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Deregister it.
-	deregResp, err := testCluster.MetaC.DeregisterNode(ctx, &pb_meta.DeregisterNodeRequest{
+	deregResp, err := tc.MetaC.DeregisterNode(ctx, &pb_meta.DeregisterNodeRequest{
 		NodeId: nodeID,
 	})
 	require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestDeregisterNonexistentNodeFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := testCluster.MetaC.DeregisterNode(ctx, &pb_meta.DeregisterNodeRequest{
+	_, err := tc.MetaC.DeregisterNode(ctx, &pb_meta.DeregisterNodeRequest{
 		NodeId: "totally-nonexistent-node",
 	})
 	require.Error(t, err, "deregistering unknown node should fail")
