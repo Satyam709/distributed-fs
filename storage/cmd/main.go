@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/satyam709/distributed-fs/internal/logging"
+	"github.com/satyam709/distributed-fs/internal/retry"
 	"github.com/satyam709/distributed-fs/storage"
 	"github.com/satyam709/distributed-fs/storage/metaclient"
 	"github.com/satyam709/distributed-fs/storage/store"
@@ -18,14 +19,11 @@ func main() {
 
 	logger.Info("distributed-fs storage node starting")
 
-	// LoadConfigDefaultFlow applies config in order: Defaults -> JSON file -> Environment variables
-	// Priority increases: Env vars override JSON, JSON overrides defaults
 	cfg, err := storage.LoadConfigDefaultFlow()
 	if err != nil {
 		logger.FatalError("invalid config", err)
 	}
 
-	// If NodeID not provided in config, load from file or generate new one
 	nodeID := cfg.NodeID
 	if nodeID == "" {
 		nodeID = storage.LoadOrGenerateNodeID(cfg.DataDir, logger)
@@ -63,11 +61,17 @@ func main() {
 	}
 	logger.Info("disk store ready", slog.String("rootDir", rootDataDir))
 
-	metaClient, err := metaclient.NewMetadataClient(cfg.MetadataAddr)
+	retryPolicy := retry.Policy{
+		MaxAttempts: cfg.RetryMaxAttempts,
+		Base:        cfg.RetryBaseBackoff,
+		Max:         cfg.RetryMaxBackoff,
+		Multiplier:  2.0,
+	}
+	metaClient, err := metaclient.NewMetadataClient(cfg.MetadataAddrs, retryPolicy, cfg.RPCTimeout)
 	if err != nil {
 		logger.FatalError("failed to create metadata client", err)
 	}
-	logger.Info("metadata client ready", slog.String("metadataAddr", cfg.MetadataAddr))
+	logger.Info("metadata client ready", slog.Any("metadataAddrs", cfg.MetadataAddrs))
 
 	node, err := storage.NewStorageNode(*cfg, logger, diskStore, metaClient)
 	if err != nil {

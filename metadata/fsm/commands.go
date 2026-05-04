@@ -74,6 +74,14 @@ const (
 	// CmdAddChunkReplica — triggered by RepairScheduler after successful repair.
 	// Adds a single node to a chunk's replica list.
 	CmdAddChunkReplica
+
+	// Metadata node commands
+
+	// CmdRegisterMetadataNode — registers or updates metadata node raft→grpc mapping.
+	CmdRegisterMetadataNode
+
+	// CmdDeregisterMetadataNode — removes a metadata node from the address registry.
+	CmdDeregisterMetadataNode
 )
 
 // MetadataCommand is the generic envelope serialised into every Raft log
@@ -200,6 +208,21 @@ type CommandUpdateRepairJob struct {
 type CommandAddChunkReplica struct {
 	ChunkID string `json:"chunk_id"`
 	NodeID  string `json:"node_id"`
+}
+
+// CommandRegisterMetadataNode stores or updates the raft→grpc address
+// mapping for a metadata cluster member.
+type CommandRegisterMetadataNode struct {
+	NodeID   string `json:"node_id"`
+	RaftAddr string `json:"raft_addr"`
+	GrpcAddr string `json:"grpc_addr"`
+}
+
+// CommandDeregisterMetadataNode removes a metadata node from the address
+// registry, typically during graceful shutdown.
+type CommandDeregisterMetadataNode struct {
+	NodeID   string `json:"node_id"`
+	RaftAddr string `json:"raft_addr"` // key used in mdNodeRegistry
 }
 
 // Propose serialises the given MetadataCommand and submits it to the

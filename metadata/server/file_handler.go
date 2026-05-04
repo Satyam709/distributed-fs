@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	pb "github.com/satyam709/distributed-fs/gen/proto/metadata/v1"
 	"github.com/satyam709/distributed-fs/metadata/fsm"
 	"google.golang.org/grpc/codes"
@@ -12,7 +13,11 @@ import (
 
 func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateFileRequest) (*pb.CreateFileResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
+	}
+
+	if req.FileId == "" {
+		req.FileId = uuid.New().String()
 	}
 	// check duplicate filename
 	_, err := h.deps.FSM.GetFile(req.FileId)
@@ -93,7 +98,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 
 func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileRequest) (*pb.GetFileResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 
 	// direct fsm read - no raft involvement since this is a
@@ -141,7 +146,7 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 
 func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*pb.DeleteFileResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 	// verofy file exosts before proposing - fall fast with clear error
 	_, err := h.deps.FSM.GetFile(req.FileId)
@@ -165,7 +170,7 @@ func (h *MetadataServiceHandler) DeleteFile(ctx context.Context, req *pb.DeleteF
 
 func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.ListFilesResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 	// direct fsm read - rsults already sorted by fileName
 	// files, err := h.fsm.ListFiles(req.Prefix)
@@ -192,7 +197,7 @@ func (h *MetadataServiceHandler) ListFiles(ctx context.Context, req *pb.ListFile
 
 func (h *MetadataServiceHandler) CommitFile(ctx context.Context, req *pb.CommitFileRequest) (*pb.CommitFileResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 	cmd, err := newCommand(fsm.CmdCommitFile, fsm.CommandCommitFile{
 		FileID:   req.FileId,

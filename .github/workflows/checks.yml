@@ -90,4 +90,28 @@ jobs:
       - name: Test
         run: make test-all
 
+  integration-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1.50.0
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Download Go deps
+        run: go mod download
+
+      - name: Integration test
+        run: make integration-test
+
 

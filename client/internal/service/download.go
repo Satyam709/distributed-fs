@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -156,10 +157,10 @@ func (s *DownloadService) downloadChunkWithFailover(ctx context.Context, outFile
 		}
 
 		// Verify checksum if we have one from metadata
-		if chunk.Checksum != "" {
+		if len(chunk.Checksum) > 0 {
 			computed := checksum.Compute(data)
-			if computed != chunk.Checksum {
-				lastErr = fmt.Errorf("checksum mismatch for chunk %s from %s: got %s, want %s",
+			if !bytes.Equal(computed, chunk.Checksum) {
+				lastErr = fmt.Errorf("checksum mismatch for chunk %s from %s: got %x, want %x",
 					chunk.ChunkID, addr, computed, chunk.Checksum)
 				log.Printf("download: %v", lastErr)
 				continue

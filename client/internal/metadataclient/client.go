@@ -29,7 +29,7 @@ type ChunkInfo struct {
 	FileID     string
 	ChunkIndex int
 	Size       int64
-	Checksum   string
+	Checksum   []byte
 	Replicas   []string // node addresses that hold this chunk
 }
 
@@ -39,11 +39,11 @@ type ChunkInfo struct {
 type Client interface {
 	// CreateFile registers a new file and obtains chunk placement assignments.
 	// Returns the server-assigned file_id and a placement map for each chunk.
-	CreateFile(ctx context.Context, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (fileID string, placements []Placement, err error)
+	CreateFile(ctx context.Context, fileID, fileName string, fileSize int64, chunkSize int64, chunkIDs []string) (string, []Placement, error)
 
 	// CommitChunk tells metadata that a chunk has been successfully stored
 	// on the given nodes with the given checksum.
-	CommitChunk(ctx context.Context, chunkID, fileID string, confirmedNodes []string, checksum string) error
+	CommitChunk(ctx context.Context, chunkID, fileID string, confirmedNodes []string, checksum []byte) error
 
 	// GetFile retrieves the metadata for a file including all its chunks
 	// and current replica locations.

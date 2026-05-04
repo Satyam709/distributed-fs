@@ -17,7 +17,7 @@ type repairInstructionLookup interface {
 
 func (h *MetadataServiceHandler) RegisterNode(ctx context.Context, req *pb.RegisterNodeRequest) (*pb.RegisterNodeResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 
 	cmd, err := newCommand(fsm.CmdRegisterNode, fsm.CommandRegisterNode{
@@ -44,7 +44,7 @@ func (h *MetadataServiceHandler) RegisterNode(ctx context.Context, req *pb.Regis
 
 func (h *MetadataServiceHandler) DeregisterNode(ctx context.Context, req *pb.DeregisterNodeRequest) (*pb.DeregisterNodeResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 
 	_, err := h.deps.FSM.GetNode(req.NodeId)
@@ -72,7 +72,7 @@ func (h *MetadataServiceHandler) DeregisterNode(ctx context.Context, req *pb.Der
 
 func (h *MetadataServiceHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 	// -1 see if the node even exists if not signal it to register first
 	_, err := h.deps.FSM.GetNode(req.NodeId)

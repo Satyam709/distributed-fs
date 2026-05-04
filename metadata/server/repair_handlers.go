@@ -9,7 +9,7 @@ import (
 
 func (h *MetadataServiceHandler) ReportRepairResult(ctx context.Context, req *pb.ReportRepairResultRequest) (*pb.ReportRepairResultResponse, error) {
 	if !h.isLeader() {
-		return nil, h.leaderRedirect()
+		return nil, h.leaderRedirect(ctx)
 	}
 	if req.JobSucceed {
 		err := h.deps.FSM.UpdateRepairJobStatus(h.deps.Raft, req.JobId, fsm.RepairStatusDone)

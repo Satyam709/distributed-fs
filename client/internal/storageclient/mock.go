@@ -37,7 +37,7 @@ type PutCall struct {
 	FileID      string
 	ChunkIndex  int
 	DataLen     int
-	Checksum    string
+	Checksum    []byte
 	ReplicateTo []string
 }
 
@@ -57,7 +57,7 @@ func NewMockClient() *MockClient {
 	}
 }
 
-func (m *MockClient) PutChunk(_ context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum string, replicateTo []string) error {
+func (m *MockClient) PutChunk(_ context.Context, addr string, chunkID, fileID string, chunkIndex int, data []byte, checksum []byte, replicateTo []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

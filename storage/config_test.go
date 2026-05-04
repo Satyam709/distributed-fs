@@ -14,7 +14,7 @@ func TestLoadFromJSON(t *testing.T) {
 	jsonContent := `{
 		"node_id": "storage-1",
 		"grpc_addr": ":4100",
-		"metadata_addr": ":3100",
+		"metadata_addrs": [":3100"],
 		"data_dir": "/tmp/storage",
 		"timeout": "30s",
 		"heartbeat_interval": "5s",
@@ -32,7 +32,7 @@ func TestLoadFromJSON(t *testing.T) {
 
 	assert.Equal(t, "storage-1", cfg.NodeID)
 	assert.Equal(t, ":4100", cfg.GRPCAddr)
-	assert.Equal(t, ":3100", cfg.MetadataAddr)
+	assert.Equal(t, []string{":3100"}, cfg.MetadataAddrs)
 	assert.Equal(t, "/tmp/storage", cfg.DataDir)
 	assert.Equal(t, 30*time.Second, cfg.Timeout)
 	assert.Equal(t, 5*time.Second, cfg.HeartbeatInterval)
@@ -56,7 +56,7 @@ func TestLoadFromJSON_InvalidJSON(t *testing.T) {
 
 func TestLoadFromJSON_AppliesDefaults(t *testing.T) {
 	jsonContent := `{
-		"metadata_addr": ":3100"
+		"metadata_addrs": [":3100"]
 	}`
 
 	tmpDir := t.TempDir()
@@ -80,7 +80,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, defConfig.DataDir, DefaultStorageDataDir)
 	assert.Equal(t, defConfig.GRPCAddr, DefaultStorageGRPCAddr)
 	assert.Equal(t, defConfig.HeartbeatInterval, DefaultStorageHeartbeatInterval)
-	assert.Equal(t, defConfig.MetadataAddr, DefaultStorageMetadataAddr)
+	assert.Equal(t, defConfig.MetadataAddrs, []string{DefaultStorageMetadataAddr})
 	// assert.Equal(t, defConfig.NodeID, DefaultStorageDataDir)
 	assert.Equal(t, defConfig.ReplicationFactor, DefaultStorageReplicationFactor)
 	assert.Equal(t, defConfig.Timeout, DefaultStorageTimeout)
@@ -92,7 +92,7 @@ func TestLoadConfigDefaultFlow_DefaultsOnly(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, DefaultStorageGRPCAddr, cfg.GRPCAddr)
-	assert.Equal(t, DefaultStorageMetadataAddr, cfg.MetadataAddr)
+	assert.Equal(t, []string{DefaultStorageMetadataAddr}, cfg.MetadataAddrs)
 	assert.Equal(t, DefaultStorageDataDir, cfg.DataDir)
 	assert.Equal(t, DefaultStorageReplicationFactor, cfg.ReplicationFactor)
 }
@@ -169,4 +169,48 @@ func TestApplyEnv_InvalidReplicationFactor(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid env var STORAGE_REPLICATION_FACTOR")
+}
+
+func TestAdvertiseAddr_Env(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	t.Setenv(EnvStorageAdvertiseAddr, "storage-1:4000")
+
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "storage-1:4000", cfg.AdvertiseAddr)
+	assert.Equal(t, DefaultStorageGRPCAddr, cfg.GRPCAddr)
+}
+
+func TestAdvertiseAddr_JSON(t *testing.T) {
+	jsonContent := `{"advertise_addr": "storage-2:4000", "grpc_addr": ":4000"}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "storage-2:4000", cfg.AdvertiseAddr)
+}
+
+func TestAdvertiseAddr_EnvOverridesJSON(t *testing.T) {
+	jsonContent := `{"advertise_addr": "json-addr:4000"}`
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	err := os.WriteFile(configPath, []byte(jsonContent), 0o644)
+	require.NoError(t, err)
+
+	t.Setenv(EnvStorageJsonConfigPath, configPath)
+	t.Setenv(EnvStorageAdvertiseAddr, "env-addr:4000")
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Equal(t, "env-addr:4000", cfg.AdvertiseAddr)
+}
+
+func TestAdvertiseAddr_EmptyByDefault(t *testing.T) {
+	t.Setenv(EnvStorageJsonConfigPath, "")
+	cfg, err := LoadConfigDefaultFlow()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.AdvertiseAddr)
 }

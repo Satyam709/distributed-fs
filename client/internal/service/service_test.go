@@ -120,9 +120,9 @@ func TestUpload_HappyPath(t *testing.T) {
 		t.Errorf("CreateFile chunkIDs: got %d, want 3", len(mockMeta.CreateFileCalls[0].ChunkIDs))
 	}
 
-	// Verify CommitChunk was called for each chunk
-	if len(mockMeta.CommitChunkCalls) != 3 {
-		t.Errorf("CommitChunk called %d times, want 3", len(mockMeta.CommitChunkCalls))
+	// Verify CommitChunk was NOT called (storage handler commits internally)
+	if len(mockMeta.CommitChunkCalls) != 0 {
+		t.Errorf("CommitChunk called %d times, want 0 (handled by storage server)", len(mockMeta.CommitChunkCalls))
 	}
 
 	// Verify storage PutChunk was called for each chunk
@@ -371,25 +371,16 @@ func TestUpload_ChecksumComputed(t *testing.T) {
 		t.Fatalf("Upload failed: %v", err)
 	}
 
-	// Verify checksum was passed to both PutChunk and CommitChunk
+	// Verify checksum was passed to PutChunk
 	if len(mockStorage.PutCalls) != 1 {
 		t.Fatalf("expected 1 PutCall, got %d", len(mockStorage.PutCalls))
 	}
-	if mockStorage.PutCalls[0].Checksum == "" {
+	if len(mockStorage.PutCalls[0].Checksum) == 0 {
 		t.Error("PutChunk should receive a checksum")
 	}
-
-	if len(mockMeta.CommitChunkCalls) != 1 {
-		t.Fatalf("expected 1 CommitChunkCall, got %d", len(mockMeta.CommitChunkCalls))
-	}
-	if mockMeta.CommitChunkCalls[0].Checksum == "" {
-		t.Error("CommitChunk should receive a checksum")
-	}
-
-	// Both should get the same checksum
-	if mockStorage.PutCalls[0].Checksum != mockMeta.CommitChunkCalls[0].Checksum {
-		t.Errorf("checksum mismatch between PutChunk (%s) and CommitChunk (%s)",
-			mockStorage.PutCalls[0].Checksum, mockMeta.CommitChunkCalls[0].Checksum)
+	// Checksum should be 32 bytes (raw SHA-256)
+	if len(mockStorage.PutCalls[0].Checksum) != 32 {
+		t.Errorf("checksum should be 32 bytes, got %d", len(mockStorage.PutCalls[0].Checksum))
 	}
 }
 
@@ -782,14 +773,14 @@ func TestUploadThenDownload_EndToEnd(t *testing.T) {
 		t.Fatal("file not found in mock metadata after upload")
 	}
 
-	// Populate chunk info in mock metadata from CommitChunk calls
+	// Populate chunk info in mock metadata from PutChunk calls
 	fi := mockMeta.Files[fileID]
 	for i, chunkID := range fi.ChunkIDs {
-		// Find the matching CommitChunk call
-		var chunkChecksum string
-		for _, cc := range mockMeta.CommitChunkCalls {
-			if cc.ChunkID == chunkID {
-				chunkChecksum = cc.Checksum
+		// Find the matching PutCall
+		var chunkChecksum []byte
+		for _, pc := range mockStorage.PutCalls {
+			if pc.ChunkID == chunkID {
+				chunkChecksum = pc.Checksum
 				break
 			}
 		}
