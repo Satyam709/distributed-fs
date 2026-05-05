@@ -48,7 +48,7 @@ func (h *MetadataServiceHandler) CreateFile(ctx context.Context, req *pb.CreateF
 	var chPlacements []*pb.ChunkPlacement
 	rf := h.deps.ReplicationFactor
 	for _, v := range req.ChunkIds {
-		outNodes, err := h.deps.TargetPlacement.SelectNodes(aliveNodes, v, rf)
+		outNodes, err := h.deps.TargetPlacement.SelectNodes(aliveNodes, v, int(req.ChunkSize), rf)
 		if err != nil || len(outNodes) == 0 {
 			return nil, status.Errorf(codes.Internal, "error getting placement for chunk %s: %v", v, err)
 		}
@@ -124,10 +124,14 @@ func (h *MetadataServiceHandler) GetFile(ctx context.Context, req *pb.GetFileReq
 		resolvedAddrs := make([]string, 0, len(ck.Replicas))
 		for _, rep := range ck.Replicas {
 			node, err := h.deps.FSM.GetNode(rep)
-			if err == nil && node.Address != "" {
+			if err != nil {
+				continue
+			}
+			if node.Status == fsm.NodeStatusDead || node.Status == fsm.NodeStatusDraining {
+				continue
+			}
+			if node.Address != "" {
 				resolvedAddrs = append(resolvedAddrs, node.Address)
-			} else {
-				resolvedAddrs = append(resolvedAddrs, rep)
 			}
 		}
 

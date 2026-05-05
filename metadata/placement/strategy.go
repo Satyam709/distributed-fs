@@ -11,8 +11,8 @@ import (
 // responsible for providing the candidate node list — the strategy
 // only decides which nodes to pick from that list.
 type PlacementStrategy interface {
-	SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
-	SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectNodes(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
+	SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error)
 	SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeEntry
 }
 
@@ -31,9 +31,9 @@ func (a SortByMostFreeSpace) Less(i, j int) bool {
 // the most available disk space. All node data is provided by the caller.
 type MostFreeSpaceStrategy struct{}
 
-func (mfss MostFreeSpaceStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filteredNodes := SortByMostFreeSpace(filterNodes(nodes, exclude...))
-
+func (mfss MostFreeSpaceStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	candidates := filterByMinSpace(filterNodes(nodes, exclude...), minSpace)
+	filteredNodes := SortByMostFreeSpace(candidates)
 	sort.Sort(filteredNodes)
 
 	if len(filteredNodes) < count {
@@ -42,9 +42,9 @@ func (mfss MostFreeSpaceStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID str
 	return filteredNodes[:count], nil
 }
 
-func (mfss MostFreeSpaceStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filteredNodes := SortByMostFreeSpace(filterNodes(nodes, exclude...))
-
+func (mfss MostFreeSpaceStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	candidates := filterByMinSpace(filterNodes(nodes, exclude...), minSpace)
+	filteredNodes := SortByMostFreeSpace(candidates)
 	sort.Sort(sort.Reverse(filteredNodes))
 
 	if len(filteredNodes) < count {
@@ -60,6 +60,19 @@ func (mfss MostFreeSpaceStrategy) SelectPrimary(nodes []fsm.NodeEntry) fsm.NodeE
 	sorted := SortByMostFreeSpace(append([]fsm.NodeEntry(nil), nodes...))
 	sort.Sort(sorted)
 	return sorted[0]
+}
+
+func filterByMinSpace(nodes []fsm.NodeEntry, minSpace int) []fsm.NodeEntry {
+	if minSpace <= 0 {
+		return nodes
+	}
+	out := make([]fsm.NodeEntry, 0, len(nodes))
+	for _, n := range nodes {
+		if n.FreeSpace >= uint64(minSpace) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 func filterNodes[T interface{ ~[]fsm.NodeEntry }](Nodes T, exclude ...fsm.NodeEntry) T {
@@ -83,8 +96,8 @@ func filterNodes[T interface{ ~[]fsm.NodeEntry }](Nodes T, exclude ...fsm.NodeEn
 // be a performance bottleneck.
 type LeastLoadedStrategy struct{}
 
-func (lls LeastLoadedStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filtered := filterNodes(nodes, exclude...)
+func (lls LeastLoadedStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filtered := filterByMinSpace(filterNodes(nodes, exclude...), minSpace)
 	sort.Slice(filtered, func(i, j int) bool {
 		return filtered[i].ChunkCount < filtered[j].ChunkCount
 	})
@@ -94,8 +107,8 @@ func (lls LeastLoadedStrategy) SelectNodes(nodes []fsm.NodeEntry, chunkID string
 	return filtered[:count], nil
 }
 
-func (lls LeastLoadedStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
-	filtered := filterNodes(nodes, exclude...)
+func (lls LeastLoadedStrategy) SelectNodeReverse(nodes []fsm.NodeEntry, chunkID string, minSpace, count int, exclude ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+	filtered := filterByMinSpace(filterNodes(nodes, exclude...), minSpace)
 	sort.Slice(filtered, func(i, j int) bool {
 		return filtered[i].ChunkCount > filtered[j].ChunkCount
 	})

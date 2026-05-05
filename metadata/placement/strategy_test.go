@@ -49,7 +49,7 @@ func TestMostFreeSpaceStrategy_SelectNodes_Success(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 2)
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 2)
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
 	require.Equal(t, "n2", selected[0].NodeID)
@@ -64,7 +64,7 @@ func TestMostFreeSpaceStrategy_SelectNodes_InsufficientNodes(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 5)
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 5)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not enough nodes")
 	require.Len(t, selected, 2)
@@ -79,7 +79,7 @@ func TestMostFreeSpaceStrategy_SelectNodes_WithExclude(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 2, fsm.NodeEntry{NodeID: "n2"})
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 2, fsm.NodeEntry{NodeID: "n2"})
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
 	require.Equal(t, "n3", selected[0].NodeID)
@@ -94,7 +94,7 @@ func TestMostFreeSpaceStrategy_SelectNodes_ExcludeAll(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 1,
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 1,
 		fsm.NodeEntry{NodeID: "n1"},
 		fsm.NodeEntry{NodeID: "n2"},
 	)
@@ -112,7 +112,7 @@ func TestMostFreeSpaceStrategy_SelectNodeReverse_Success(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 2)
+	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 0, 2)
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
 	require.Equal(t, "n1", selected[0].NodeID)
@@ -126,7 +126,7 @@ func TestMostFreeSpaceStrategy_SelectNodeReverse_InsufficientNodes(t *testing.T)
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 3)
+	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 0, 3)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not enough nodes")
 	require.Len(t, selected, 1)
@@ -141,7 +141,7 @@ func TestMostFreeSpaceStrategy_SelectNodeReverse_WithExclude(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 1, fsm.NodeEntry{NodeID: "n1"})
+	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 0, 1, fsm.NodeEntry{NodeID: "n1"})
 	require.NoError(t, err)
 	require.Len(t, selected, 1)
 	require.Equal(t, "n3", selected[0].NodeID)
@@ -215,7 +215,100 @@ func TestMostFreeSpaceStrategy_SelectNodes_CountEqualToAvailable(t *testing.T) {
 
 	strategy := MostFreeSpaceStrategy{}
 
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 2)
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 2)
+	require.NoError(t, err)
+	require.Len(t, selected, 2)
+}
+
+// ---------------------------------------------------------------------------
+// minSpace filtering tests
+// ---------------------------------------------------------------------------
+
+func TestFilterByMinSpace(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 100},
+		{NodeID: "n2", FreeSpace: 50},
+		{NodeID: "n3", FreeSpace: 0},
+	}
+
+	filtered := filterByMinSpace(nodes, 50)
+	require.Len(t, filtered, 2)
+	require.Equal(t, "n1", filtered[0].NodeID)
+	require.Equal(t, "n2", filtered[1].NodeID)
+}
+
+func TestFilterByMinSpace_ZeroMinMeansNoFilter(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 100},
+		{NodeID: "n2", FreeSpace: 0},
+	}
+
+	filtered := filterByMinSpace(nodes, 0)
+	require.Len(t, filtered, 2)
+}
+
+func TestFilterByMinSpace_AllFiltered(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 10},
+		{NodeID: "n2", FreeSpace: 5},
+	}
+
+	filtered := filterByMinSpace(nodes, 100)
+	require.Len(t, filtered, 0)
+}
+
+func TestMostFreeSpaceStrategy_SelectNodes_ExcludesFullNode(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 1000},
+		{NodeID: "n2", FreeSpace: 0},
+		{NodeID: "n3", FreeSpace: 100},
+	}
+
+	strategy := MostFreeSpaceStrategy{}
+
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 500, 1)
+	require.NoError(t, err)
+	require.Len(t, selected, 1)
+	require.Equal(t, "n1", selected[0].NodeID)
+}
+
+func TestMostFreeSpaceStrategy_SelectNodes_AllFull(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 10},
+		{NodeID: "n2", FreeSpace: 5},
+	}
+
+	strategy := MostFreeSpaceStrategy{}
+
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 500, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not enough nodes")
+	require.Len(t, selected, 0)
+}
+
+func TestMostFreeSpaceStrategy_SelectNodeReverse_ExcludesFullNode(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 1000},
+		{NodeID: "n2", FreeSpace: 0},
+		{NodeID: "n3", FreeSpace: 100},
+	}
+
+	strategy := MostFreeSpaceStrategy{}
+
+	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 500, 1)
+	require.NoError(t, err)
+	require.Len(t, selected, 1)
+	require.Equal(t, "n1", selected[0].NodeID)
+}
+
+func TestMinSpaceZeroDoesNotFilter(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "n1", FreeSpace: 1000},
+		{NodeID: "n2", FreeSpace: 0},
+	}
+
+	strategy := MostFreeSpaceStrategy{}
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 2)
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
 }
@@ -252,12 +345,26 @@ func TestLeastLoadedStrategy_SelectNodes(t *testing.T) {
 	}
 
 	strategy := LeastLoadedStrategy{}
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 2)
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 2)
 
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
 	require.Equal(t, "light", selected[0].NodeID)
 	require.Equal(t, "medium", selected[1].NodeID)
+}
+
+func TestLeastLoadedStrategy_SelectNodes_MinSpace(t *testing.T) {
+	nodes := []fsm.NodeEntry{
+		{NodeID: "big", ChunkCount: 1, FreeSpace: 1000},
+		{NodeID: "small", ChunkCount: 2, FreeSpace: 10},
+	}
+
+	strategy := LeastLoadedStrategy{}
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 500, 1)
+
+	require.NoError(t, err)
+	require.Len(t, selected, 1)
+	require.Equal(t, "big", selected[0].NodeID)
 }
 
 func TestLeastLoadedStrategy_SelectNodes_WithExclude(t *testing.T) {
@@ -268,7 +375,7 @@ func TestLeastLoadedStrategy_SelectNodes_WithExclude(t *testing.T) {
 	}
 
 	strategy := LeastLoadedStrategy{}
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 1, fsm.NodeEntry{NodeID: "light"})
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 1, fsm.NodeEntry{NodeID: "light"})
 
 	require.NoError(t, err)
 	require.Len(t, selected, 1)
@@ -283,7 +390,7 @@ func TestLeastLoadedStrategy_SelectNodeReverse(t *testing.T) {
 	}
 
 	strategy := LeastLoadedStrategy{}
-	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 2)
+	selected, err := strategy.SelectNodeReverse(nodes, "chunk1", 0, 2)
 
 	require.NoError(t, err)
 	require.Len(t, selected, 2)
@@ -297,7 +404,7 @@ func TestLeastLoadedStrategy_SelectNodes_Insufficient(t *testing.T) {
 	}
 
 	strategy := LeastLoadedStrategy{}
-	selected, err := strategy.SelectNodes(nodes, "chunk1", 3)
+	selected, err := strategy.SelectNodes(nodes, "chunk1", 0, 3)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not enough nodes")

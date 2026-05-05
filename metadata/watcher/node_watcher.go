@@ -39,7 +39,7 @@ type NodeWatcher struct {
 	proposer       Proposer
 	repair         RepairTriggerer
 	suspectTimeout time.Duration
-	interval       time.Duration
+	interval       time.Duration // interval should be less than suspectTimeout
 	logger         *logging.CLogger
 
 	// stopCh is closed by Stop() to signal the sweep goroutine to exit.
