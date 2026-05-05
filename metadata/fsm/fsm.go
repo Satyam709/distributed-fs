@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -938,11 +939,8 @@ func (mfsm *MetadataFSM) GetChunksByNode(nodeID string) ([]string, error) {
 
 	var chunkIDs []string
 	for _, chunk := range mfsm.chunkRegistry {
-		for _, nid := range chunk.Replicas {
-			if nid == nodeID {
-				chunkIDs = append(chunkIDs, chunk.ChunkID)
-				break
-			}
+		if slices.Contains(chunk.Replicas, nodeID) {
+			chunkIDs = append(chunkIDs, chunk.ChunkID)
 		}
 	}
 	return chunkIDs, nil
@@ -1042,6 +1040,22 @@ func (mfsm *MetadataFSM) GetPendingJobsForNode(nodeID string) ([]RepairJob, erro
 		}
 	}
 	return jobs, nil
+}
+
+// HasActiveRepairForChunkTarget returns true if any pending or in-progress
+// repair job already exists for the given chunk→target combination.
+// Used to prevent duplicate repair jobs from being scheduled.
+func (mfsm *MetadataFSM) HasActiveRepairForChunkTarget(chunkID, targetNodeID string) bool {
+	mfsm.jrMutex.RLock()
+	defer mfsm.jrMutex.RUnlock()
+
+	for _, job := range mfsm.repairJobRegistry {
+		if job.ChunkID == chunkID && job.TargetNodeID == targetNodeID &&
+			(job.Status == RepairStatusPending || job.Status == RepairStatusInProgress) {
+			return true
+		}
+	}
+	return false
 }
 
 // UpdateLastSeen directly updates a node's LastSeen timestamp in memory.

@@ -15,6 +15,7 @@ import (
 	"github.com/satyam709/distributed-fs/storage/service"
 	"github.com/satyam709/distributed-fs/storage/store"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 var _ service.NodeInfo = (*StorageNode)(nil)
@@ -49,7 +50,7 @@ func NewStorageNode(cfg StorageNodeConfig, logger *logging.CLogger, store store.
 	}
 
 	dialer := replication.NewPeerDialer()
-	manager := replication.NewReplicationManager(dialer, store, metaClient)
+	manager := replication.NewReplicationManager(dialer, store, metaClient, cfg.NodeID)
 
 	return &StorageNode{
 		config:             cfg,
@@ -142,7 +143,13 @@ func (s *StorageNode) Start() error {
 	s.grpcLis = listener
 
 	// 2. Wire gRPC services.
-	s.grpcServer = grpc.NewServer(grpc.ConnectionTimeout(s.config.Timeout))
+	s.grpcServer = grpc.NewServer(
+		grpc.ConnectionTimeout(s.config.Timeout),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             10 * time.Second,
+			PermitWithoutStream: true,
+		}),
+	)
 
 	storageServer, err := server.NewStorageServerHandler(s.store, s.logger, s.metaClient, s.config.NodeID, s.replicationManager)
 	if err != nil {

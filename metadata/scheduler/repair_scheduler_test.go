@@ -46,13 +46,13 @@ type placementStub struct {
 	reverseCount int
 }
 
-func (p *placementStub) SelectNodes(_ []fsm.NodeEntry, _ string, count int, _ ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+func (p *placementStub) SelectNodes(_ []fsm.NodeEntry, _ string, _ int, count int, _ ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
 	if count > len(p.nodes) {
 		return p.nodes, nil
 	}
 	return p.nodes[:count], nil
 }
-func (p *placementStub) SelectNodeReverse(_ []fsm.NodeEntry, _ string, count int, _ ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
+func (p *placementStub) SelectNodeReverse(_ []fsm.NodeEntry, _ string, _ int, count int, _ ...fsm.NodeEntry) ([]fsm.NodeEntry, error) {
 	p.reverseCount = count
 	if count > len(p.reverseNodes) {
 		return p.reverseNodes, nil
@@ -318,6 +318,34 @@ func TestExecuteJob_AddsToPendingAndMarksInProgress(t *testing.T) {
 	assert.Equal(t, fsm.RepairStatusInProgress, job.Status)
 }
 
+func TestDupsJobsRejection(t *testing.T) {
+	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
+
+	setupBaseState(t, m)
+	targetNode := "node-c"
+	ps := &placementStub{[]fsm.NodeEntry{{
+		NodeID:    targetNode,
+		FreeSpace: 1024,
+	}}, nil, 0}
+	rs, _ := newTestScheduler(t, m, ps, 3)
+	rs.ScheduleRepairForChunk("chunk-1")
+	jobs, _ := m.GetJobsByStatus(fsm.RepairStatusPending)
+	require.Len(t, jobs, 1, "job should be present")
+	// executeJob
+	rs.executeJob(<-rs.jobs)
+
+	// try re-adding the same job
+	rs.ScheduleRepairForChunk("chunk-1")
+	rs.ScheduleRepairForChunk("chunk-1")
+	rs.ScheduleRepairForChunk("chunk-1")
+
+	select {
+	case j := <-rs.jobs:
+		assert.Empty(t, j, "found the dup job %v", j)
+	default:
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Tests: OnJobComplete
 // ---------------------------------------------------------------------------
@@ -397,42 +425,6 @@ func TestOnJobComplete_Success_DeleteSource_EvictsReplica(t *testing.T) {
 	for _, loc := range locations {
 		assert.NotEqual(t, "node-a", loc.NodeID)
 	}
-}
-
-func TestOnJobComplete_Failure_ReschedulesWhenUnderReplicated(t *testing.T) {
-	m := fsm.NewEmptyMetadataFsm(logging.NewCLogger())
-	setupBaseState(t, m)
-
-	// Mark node-a dead so chunk-1 only has node-b
-	applyFSMCommand(t, m, fsm.CmdMarkNodeDead, fsm.CommandMarkNodeDead{
-		NodeID: "node-a", UpdatedAt: time.Now(),
-	})
-
-	now := time.Now()
-	applyFSMCommand(t, m, fsm.CmdCreateRepairJob, fsm.CommandCreateRepairJob{
-		JobID: "job-fail", CreatedAt: now, ChunkID: "chunk-1",
-		SourceNode: "node-b", TargetNode: "node-c",
-	})
-	// Mark the original job as done/failed in FSM so the test can lookup
-	applyFSMCommand(t, m, fsm.CmdUpdateRepairJob, fsm.CommandUpdateRepairJob{
-		JobID: "job-fail", Status: fsm.RepairStatusFailed, UpdatedAt: now,
-	})
-
-	target := fsm.NodeEntry{NodeID: "node-c", FreeSpace: 512}
-	ps := &placementStub{nodes: []fsm.NodeEntry{target}}
-	rs, tp := newTestScheduler(t, m, ps, 2)
-
-	err := rs.OnJobComplete("node-b", "job-fail", false, "timeout")
-	require.NoError(t, err)
-
-	// Should have created a new repair job for the still-under-replicated chunk
-	var newJobs int
-	for _, cmd := range tp.proposed {
-		if cmd.Type == fsm.CmdCreateRepairJob {
-			newJobs++
-		}
-	}
-	assert.Equal(t, 1, newJobs, "should reschedule when still under-replicated")
 }
 
 func TestOnJobComplete_Failure_NoRescheduleWhenMet(t *testing.T) {

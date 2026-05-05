@@ -43,10 +43,14 @@ type ReplicationManager struct {
 	dialer     *PeerDialer
 	store      store.Store
 	policy     RetryPolicy
+	nodeID     string // this storage node's ID, used when reporting repair results
 	metaclient metaclient.StorageMetadataClientInterface
 	sem        chan struct{} // limits concurrent outbound streams
 	repairQ    chan RepairJob
 	logger     *logging.CLogger
+
+	inflight   map[string]struct{} // key: "chunkID:target" — dedup in-flight repairs
+	inflightMu sync.Mutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -54,15 +58,17 @@ type ReplicationManager struct {
 }
 
 // NewReplicationManager creates a manager. Call Start() to launch repair workers.
-func NewReplicationManager(dialer *PeerDialer, s store.Store, client metaclient.StorageMetadataClientInterface) *ReplicationManager {
+func NewReplicationManager(dialer *PeerDialer, s store.Store, client metaclient.StorageMetadataClientInterface, nodeID string) *ReplicationManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ReplicationManager{
 		dialer:     dialer,
 		store:      s,
 		policy:     DefaultRetryPolicy(),
+		nodeID:     nodeID,
 		sem:        make(chan struct{}, maxConcurrentStreams),
 		repairQ:    make(chan RepairJob, repairQueueCap),
 		metaclient: client,
+		inflight:   make(map[string]struct{}),
 		logger:     logging.NewCLogger().With(slog.String("component", "ReplicationManager")),
 		ctx:        ctx,
 		cancel:     cancel,
@@ -86,9 +92,23 @@ func (m *ReplicationManager) Stop() {
 	m.logger.Info("ReplicationManager: stopped")
 }
 
-// EnqueueRepair queues a repair job non-blocking.
+// EnqueueRepair queues a repair job non-blocking. Duplicates (same chunkID+target)
+// are silently dropped to prevent repair floods from repeated heartbeat deliveries.
 // Returns true if the job was accepted, false if the queue is full.
 func (m *ReplicationManager) EnqueueRepair(job RepairJob) bool {
+	key := job.ChunkID + ":" + job.Target
+	m.inflightMu.Lock()
+	if _, exists := m.inflight[key]; exists {
+		m.inflightMu.Unlock()
+		m.logger.Debug("ReplicationManager: dedup repair job (already in-flight)",
+			slog.String("chunkId", job.ChunkID),
+			slog.String("target", job.Target),
+		)
+		return true
+	}
+	m.inflight[key] = struct{}{}
+	m.inflightMu.Unlock()
+
 	select {
 	case m.repairQ <- job:
 		m.logger.Debug("ReplicationManager: repair enqueued",
@@ -97,6 +117,9 @@ func (m *ReplicationManager) EnqueueRepair(job RepairJob) bool {
 		)
 		return true
 	default:
+		m.inflightMu.Lock()
+		delete(m.inflight, key)
+		m.inflightMu.Unlock()
 		m.logger.Debug("ReplicationManager: repair queue full, dropping job",
 			slog.String("chunkId", job.ChunkID))
 		return false
@@ -312,6 +335,7 @@ func (m *ReplicationManager) worker(id int) {
 					JobId:      job.JobID,
 					JobSucceed: false,
 					Error:      err.Error(),
+					NodeId:     m.nodeID,
 				}); reportErr != nil {
 					m.logger.Warn("repair worker: failed to report failed repair",
 						slog.String("jobId", job.JobID),
@@ -327,6 +351,7 @@ func (m *ReplicationManager) worker(id int) {
 				if _, reportErr := m.metaclient.ReportRepairResult(timedCtx, &pb_meta.ReportRepairResultRequest{
 					JobId:      job.JobID,
 					JobSucceed: true,
+					NodeId:     m.nodeID,
 				}); reportErr != nil {
 					m.logger.Warn("repair worker: failed to report successful repair",
 						slog.String("jobId", job.JobID),
@@ -335,6 +360,10 @@ func (m *ReplicationManager) worker(id int) {
 					)
 				}
 			}
+			key := job.ChunkID + ":" + job.Target
+			m.inflightMu.Lock()
+			delete(m.inflight, key)
+			m.inflightMu.Unlock()
 		}
 	}
 }

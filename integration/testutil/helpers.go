@@ -89,6 +89,12 @@ func nextRaftAddr() string {
 	return fmt.Sprintf("127.0.0.1:%d", port)
 }
 
+// NextRaftAddr returns the next available RAFT address for test clusters.
+// Exported for use by per-test cluster constructors.
+func NextRaftAddr() string {
+	return nextRaftAddr()
+}
+
 // ---------------------------------------------------------------------------
 // TestCluster — 1 metadata + N storage
 // ---------------------------------------------------------------------------
@@ -495,6 +501,61 @@ func PutChunkData(t *testing.T, ctx context.Context, client pb_storage.StorageSe
 		t.Fatalf("PutChunk unexpected code: %d %s", resp.Response.Code, resp.Response.Msg)
 	}
 	return checksum[:]
+}
+
+// BuildMetaConfig creates a metadata NodeConfig with the given parameters.
+func BuildMetaConfig(nodeID, raftAddr, raftDir string, bootstrap bool, replicationFactor int,
+	suspectTimeout, deadTimeout, watcherInterval, reconcileDelay time.Duration,
+) metadata.NodeConfig {
+	return metadata.NodeConfig{
+		NodeID:            nodeID,
+		GRPCAddr:          "127.0.0.1:0",
+		RaftAddr:          raftAddr,
+		RaftDir:           raftDir,
+		Bootstrap:         bootstrap,
+		ReplicationFactor: replicationFactor,
+		SuspectTimeout:    suspectTimeout,
+		DeadTimeout:       deadTimeout,
+		WatcherInterval:   watcherInterval,
+		ReconcileDelay:    reconcileDelay,
+		HeartbeatTimeout:  500 * time.Millisecond,
+		ElectionTimeout:   500 * time.Millisecond,
+		SnapshotInterval:  120 * time.Second,
+		SnapshotThreshold: 8192,
+		SnapshotRetain:    1,
+	}
+}
+
+// NewMetadataApp creates and returns a MetadataApp from the given config.
+func NewMetadataApp(cfg metadata.NodeConfig) (*metadata.MetadataApp, error) {
+	return metadata.NewMetadataApp(cfg)
+}
+
+// DialMeta dials a metadata node and returns the connection and client.
+func DialMeta(addr string) (*grpc.ClientConn, pb_meta.MetadataServiceClient, error) {
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	conn, err := grpc.NewClient(addr, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial metadata: %w", err)
+	}
+	return conn, pb_meta.NewMetadataServiceClient(conn), nil
+}
+
+// StartStorageNodeAt creates and starts a single storage node with a custom
+// replication factor. cleanups receives deferred cleanup functions.
+func StartStorageNodeAt(t TB, i int, metaAddrs []string, replicationFactor int, cleanups *[]func()) (*storage.StorageNode, string) {
+	logger := logging.NewCLogger()
+	return startStorageNode(t, i, metaAddrs, logger, replicationFactor, cleanups)
+}
+
+// DialStorageFull dials a storage node and returns connection, storage client, and replication client.
+func DialStorageFull(addr string) (*grpc.ClientConn, pb_storage.StorageServiceClient, pb_storage.ReplicationServiceClient) {
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	conn, err := grpc.NewClient(addr, opts...)
+	if err != nil {
+		panic(fmt.Sprintf("dial storage %s: %v", addr, err))
+	}
+	return conn, pb_storage.NewStorageServiceClient(conn), pb_storage.NewReplicationServiceClient(conn)
 }
 
 func GetChunkData(t *testing.T, ctx context.Context, client pb_storage.StorageServiceClient, chunkID string) []byte {
