@@ -1,28 +1,28 @@
 # Distributed File System in Go
 
-A fault-tolerant distributed file system built in Go, inspired by GFS and HDFS. The system separates the control plane (metadata cluster) from the data plane (storage nodes), implements peer-to-peer chunk replication, and provides automatic failure detection and repair.
+A fault-tolerant distributed file system built in Go, inspired by GFS and HDFS. Separates the control plane (Raft-based metadata cluster) from the data plane (storage nodes) with peer-to-peer chunk replication, automatic failure detection, and self-healing.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
-                        ┌─────────────────────────────┐
-                        │      Metadata Cluster (Raft)│
-                        │   Meta1 ←→ Meta2 ←→ Meta3   │
-                        └──────────────┬──────────────┘
-                                       │
-               ┌───────────────────────┼───────────────────────┐
-               │ heartbeat             │ placement             │ repair
-               ▼                       ▼                       ▼
-        ┌──────────┐           ┌──────────┐           ┌──────────┐
-        │ Storage  │◄─────────►│ Storage  │◄─────────►│ Storage  │
-        │  Node 1  │           │  Node 2  │           │  Node 3  │
-        └──────────┘           └──────────┘           └──────────┘
-               ▲
-               │ upload / download
-               │
-           Client CLI
+                         ┌─────────────────────────────┐
+                         │      Metadata Cluster (Raft)│
+                         │   Meta1 ←→ Meta2 ←→ Meta3   │
+                         └──────────────┬──────────────┘
+                                        │
+                ┌───────────────────────┼───────────────────────┐
+                │ heartbeat             │ placement             │ repair
+                ▼                       ▼                       ▼
+         ┌──────────┐           ┌──────────┐           ┌──────────┐
+         │ Storage  │◄─────────►│ Storage  │◄─────────►│ Storage  │
+         │  Node 1  │           │  Node 2  │           │  Node 3  │
+         └──────────┘           └──────────┘           └──────────┘
+                ▲
+                │ upload / download
+                │
+            Client CLI
 ```
 
 **Control Plane** — Raft-based metadata cluster. Stores file-to-chunk mappings, chunk-to-node mappings, node health, and replication state. Never touches chunk data.
@@ -33,224 +33,172 @@ A fault-tolerant distributed file system built in Go, inspired by GFS and HDFS. 
 
 ---
 
-## Features
+## Quick Start
 
-- Replicated metadata using Raft consensus (hashicorp/raft)
-- Fixed-size chunking with parallel upload and download
-- Peer-to-peer chunk replication — metadata never transfers bytes
-- Automatic failure detection via heartbeat timeouts
-- Self-healing — under-replicated chunks are automatically re-replicated
-- Chunk integrity verification via SHA256 checksums
-- Atomic chunk writes — no partial chunks ever visible on disk
-- Resumable uploads via local manifest
-- Node reconciliation on restart — stale replicas evicted automatically
-- gRPC-based communication across all components
-
----
-
-## Repository Structure
-
-```
-distributed-fs/
-│
-├── proto/                          # .proto source files
-│   ├── metadata/metadata.proto
-│   ├── storage/storage.proto
-│   └── replication/replication.proto
-│
-├── gen/                            # generated gRPC/protobuf code (committed)
-│   ├── metadata/
-│   ├── storage/
-│   └── replication/
-│
-├── internal/                       # shared packages
-│   ├── types/                      # common types: NodeInfo, ChunkID, errors
-│   ├── checksum/                   # SHA256 helpers
-│   └── retry/                      # exponential backoff with jitter
-│
-├── storage/                        # storage node
-│   ├── cmd/main.go                 # binary entrypoint
-│   ├── store/                      # ChunkStore interface + DiskChunkStore
-│   ├── chunk/                      # ChunkWriter, ChunkReader
-│   ├── replication/                # ReplicationManager, PeerDialer, repair workers
-│   ├── server/                     # gRPC handlers (StorageService, ReplicationService)
-│   ├── heartbeat/                  # HeartbeatSender
-│   ├── node.go                     # StorageNode root struct
-│   └── config.go
-│
-├── metadata/                       # metadata node
-│   ├── cmd/main.go
-│   ├── fsm/                        # Raft FSM — Apply, Snapshot, Restore
-│   ├── store/                      # BoltDB Raft log store
-│   ├── watcher/                    # NodeWatcher — heartbeat timeout detection
-│   ├── scheduler/                  # RepairScheduler, placement strategy
-│   ├── server/                     # MetadataService gRPC handler
-│   ├── node.go
-│   └── config.go
-│
-├── client/                         # CLI client
-│   ├── cmd/main.go                 # Cobra CLI entrypoint
-│   ├── chunker/                    # file splitter, chunk_id generation
-│   ├── manifest/                   # local upload manifest, resume support
-│   ├── uploader/                   # ParallelUploader
-│   ├── downloader/                 # ParallelDownloader
-│   └── config.go
-│
-├── scripts/
-│   ├── start-cluster.sh            # spin up full cluster locally
-│   └── demo.sh                     # demo: upload → kill node → verify repair
-│
-├── docker/
-│   ├── storage.Dockerfile
-│   ├── metadata.Dockerfile
-│   └── docker-compose.yml
-│
-├── Makefile
-└── README.md
-```
-
----
-
-## Prerequisites
+### Prerequisites
 
 - Go 1.21+
-- protoc (Protocol Buffer compiler)
-- protoc-gen-go and protoc-gen-go-grpc plugins
-- Docker + Docker Compose (optional, for containerized demo)
-
-Install protoc plugins:
+- protoc + protoc-gen-go + protoc-gen-go-grpc plugins
+- [buf CLI](https://buf.build/docs/installation/)
+- Docker + Docker Compose
 
 ```bash
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 ```
 
----
-
-## Getting Started
-
-### 1. Clone and install dependencies
+### Clone and build
 
 ```bash
 git clone https://github.com/your-org/distributed-fs.git
 cd distributed-fs
 go mod download
+make proto-gen       # generate protobuf/gRPC code with buf
+make build-all       # produces bin/storage, bin/metadata, bin/client/dfs-cli
 ```
 
-### 2. Generate protobuf code
+### Run a local cluster
 
 ```bash
-make proto-gen
+./scripts/run-cluster.sh -m 1 -s 3 up -d --build
 ```
 
-### 3. Build all binaries
+Dynamically generates a `docker-compose.yml`, builds images, and starts 1 metadata node + 3 storage nodes in daemon mode.
 
 ```bash
-make build-all
+# Override node counts
+./scripts/run-cluster.sh -m 3 -s 5 up -d --build
+
+# Include a client container
+./scripts/run-cluster.sh -m 1 -s 3 -c up -d --build
+
+# View logs
+docker compose -f scripts/docker-compose.yml logs -f
+
+# Stop cluster
+docker compose -f scripts/docker-compose.yml down
 ```
 
-Produces three binaries: `bin/storage`, `bin/metadata`, `bin/client`
-
-### 4. Start a local cluster
+### CLI usage
 
 ```bash
-make run-cluster
-```
+# Upload a file
+./bin/client/dfs-cli upload --file ./data.csv --name data.csv
 
-This starts 3 metadata nodes (Raft cluster) and 4 storage nodes on localhost using the configs in `scripts/`.
+# List all files
+./bin/client/dfs-cli list
 
-### 5. Use the CLI
+# List with prefix filter
+./bin/client/dfs-cli list --prefix reports/
 
-```bash
-# upload a file
-./bin/client upload --file ./testdata/sample.txt --name sample.txt
+# Download a file
+./bin/client/dfs-cli download --name data.csv --out ./output/data.csv
 
-# list files
-./bin/client list
-
-# download a file
-./bin/client download --name sample.txt --out ./output/sample.txt
+# Delete a file
+./bin/client/dfs-cli delete --id <file_id>
 ```
 
 ---
 
-## Configuration
+## Features
 
-### Storage Node (`storage/config.go`)
-
-| Field | Default | Description |
-|---|---|---|
-| `node_id` | required | Unique identifier for this node |
-| `data_dir` | `/data` | Root directory for chunk storage |
-| `grpc_addr` | `:7001` | Address to listen on |
-| `meta_addrs` | required | Comma-separated metadata node addresses |
-| `chunk_size` | `4194304` | Chunk size in bytes (4MB) |
-| `max_outbound_streams` | `8` | Max concurrent outbound replication streams |
-| `heartbeat_interval` | `3s` | How often to send heartbeat to metadata |
-| `replication_timeout` | `30s` | Timeout for full replication fan-out |
-
-### Metadata Node (`metadata/config.go`)
-
-| Field | Default | Description |
-|---|---|---|
-| `node_id` | required | Unique identifier for this node |
-| `grpc_addr` | `:9000` | gRPC address for clients and storage nodes |
-| `raft_addr` | `:9001` | Raft internal communication address |
-| `raft_dir` | `/raft` | Directory for Raft log and snapshots |
-| `replication_factor` | `3` | Target replica count per chunk |
-| `suspect_timeout` | `9s` | Time before node marked suspect |
-| `dead_timeout` | `15s` | Time before node marked dead |
-| `reconcile_delay` | `30s` | Delay before reconciling a rejoining node |
-
----
-
-## gRPC Services
-
-### MetadataService
-Handles file lifecycle, chunk placement, node registration, heartbeats, and repair coordination. Clients and storage nodes both talk to this service.
-
-### StorageService
-Client-facing service on storage nodes. Handles chunk upload (client streaming), chunk download (server streaming), eviction, and verification.
-
-### ReplicationService
-Internal service between storage nodes only. Handles peer-to-peer chunk transfer using bidirectional streaming for flow control. Clients never call this directly.
-
-Full method specifications are documented in `proto/`.
+- Raft consensus for replicated, fault-tolerant metadata
+- Fixed-size chunking (4 MB) with parallel upload and download
+- Peer-to-peer chunk replication — metadata never transfers bytes
+- Automatic failure detection via heartbeat timeouts
+- Self-healing — under-replicated chunks automatically re-replicated
+- SHA256 checksum verification for chunk integrity
+- Atomic chunk writes via tmp-file + rename (no partial chunks on disk)
+- Resumable uploads via local manifest
+- gRPC-based communication across all components
 
 ---
 
 ## How It Works
 
-### Upload
+### Upload flow
 
-1. Client generates a `file_id` (UUID) and splits the file into 4MB chunks
-2. Chunk IDs computed as `SHA256(file_id + chunk_index)` — no server needed
-3. Client writes a local manifest for resumability
-4. Client calls `CreateFile` on metadata — receives placement per chunk (primary + 2 replicas)
-5. Client streams each chunk to its primary storage node in parallel
-6. Primary node writes to disk, then fans out replication to replica nodes concurrently via P2P
-7. Primary calls `CommitChunk` to metadata after replication quorum is met
-8. Client calls `CommitFile` after all chunks are committed
+1. Client splits the file into 4 MB chunks, computes chunk IDs as `SHA256(file_id + chunk_index)`, writes a local manifest
+2. Client calls `CreateFile` on metadata — receives chunk placement (primary + replicas)
+3. Client streams each chunk to its primary storage node in parallel
+4. Primary writes locally, fans out replication to replica nodes via P2P
+5. Primary calls `CommitChunk` to metadata after replication quorum
+6. Client calls `CommitFile` after all chunks are committed
 
-### Download
+### Download flow
 
 1. Client calls `GetFile` on metadata — receives ordered chunk list with live node addresses
 2. Client downloads all chunks in parallel from any live replica per chunk
-3. Client verifies SHA256 checksum per chunk
-4. Client reassembles file in chunk_index order
+3. Client verifies SHA256 checksum per chunk, reassembles file in order
 
-### Failure Detection and Repair
+### Failure detection and repair
 
-1. Storage nodes send heartbeats every 3 seconds
-2. Metadata marks a node Suspect after 9s of silence, Dead after 15s
-3. On death, metadata scans all chunks on the dead node and enqueues repair jobs
-4. Repair jobs are delivered to live source nodes via heartbeat response piggyback
-5. Source node replicates chunk to a new target node — same P2P engine as upload
-6. If a node restarts after repair ran, stale replicas are evicted during reconciliation
+1. Storage nodes send heartbeats every 3 seconds to metadata
+2. Metadata marks a node Suspect after 10s of silence, Dead after 30s
+3. Dead nodes trigger repair: metadata enqueues jobs, piggybacks them on heartbeat responses to source nodes
+4. Source nodes replicate missing chunks to new targets using the same P2P engine as upload
+5. Restarted nodes with stale replicas are reconciled — stale chunks evicted automatically
 
-### Replication Factor Maintenance
+---
 
-The system continuously ensures every chunk has exactly `replication_factor` live replicas. Under-replication triggers repair. Over-replication (from node restart after repair) triggers eviction. The canonical replica list in the metadata FSM is always the source of truth.
+## Configuration
+
+Each component is configured via environment variables. See dedicated docs:
+
+| Component | Docs |
+|---|---|
+| Storage node | [docs/storage.md](docs/storage.md) |
+| Metadata node | [docs/metadata.md](docs/metadata.md) |
+| Client | [docs/client.md](docs/client.md) |
+| Full reference | [docs/configuration.md](docs/configuration.md) |
+
+---
+
+## Repository Structure
+
+```
+proto/                        - .proto source files (metadata/v1/, storage/v1/)
+gen/proto/                    - generated protobuf/gRPC code
+internal/                     - shared packages
+  checksum/                   - SHA256 helpers
+  errors/                     - typed error definitions
+  leaderclient/               - metadata leader resolution and caching
+  logging/                    - structured logging
+  raftutil/                   - Raft bootstrap utilities
+  retry/                      - exponential backoff with jitter
+  utils/                      - filepath validation, deep copy
+storage/                      - storage node (chunk store, replication, heartbeat, gRPC server)
+metadata/                     - metadata node (Raft FSM, BoltDB store, node watcher, repair scheduler, reconciliation)
+client/                       - CLI client (chunker, manifest, uploader, downloader)
+scripts/                      - run-cluster.sh
+integration/                  - integration tests (e2e, failover, meta_storage)
+```
+
+---
+
+## gRPC Services
+
+### MetadataService (`proto/metadata/v1/`)
+Handles file lifecycle (create, commit, get, delete), chunk placement, node registration, heartbeats, and repair coordination. Called by both clients and storage nodes.
+
+### StorageService (`proto/storage/v1/`)
+Client-facing service on storage nodes. Handles chunk upload (client streaming), chunk download (server streaming), eviction, and verification.
+
+### ReplicationService (`proto/storage/v1/`)
+Internal P2P service between storage nodes. Handles chunk replication using bidirectional streaming for flow control. Clients never call this directly.
+
+---
+
+## Development
+
+```bash
+make test-all          # run all unit tests
+make integration-test  # run integration tests (real in-process cluster)
+make lint              # lint Go + proto files
+make fmt               # format Go + proto files
+make proto-gen         # regenerate protobuf/gRPC code with buf
+make clean             # remove data and manifest directories
+```
 
 ---
 
@@ -263,67 +211,32 @@ The system continuously ensures every chunk has exactly `replication_factor` liv
 | Raft log store | hashicorp/raft-boltdb |
 | Metadata persistence | BoltDB (bbolt) |
 | RPC framework | gRPC + Protocol Buffers |
-| Checksums | stdlib crypto/sha256 |
+| Checksums | crypto/sha256 |
 | CLI | cobra |
 | Local chunk storage | Disk (two-level sharded directories) |
 
 ---
 
-## Development
-
-### Running tests
-
-```bash
-make test-all          # all packages
-make test-storage      # storage node only
-make test-metadata     # metadata node only
-make test-client       # client only
-```
-
-### Regenerating proto code
-
-Edit `.proto` files in `proto/`, then:
-
-```bash
-make proto-gen
-```
-
-Never edit files in `gen/` manually.
-
-### Running the demo
-
-The demo script starts a full cluster, uploads a file, kills a storage node, waits for repair, then verifies the file is still downloadable:
-
-```bash
-make demo
-```
-
----
-
 ## Design Decisions
 
-**Why Raft for metadata?** A single metadata node is a single point of failure — the entire system becomes unavailable even though all chunk data is intact. Raft ensures metadata survives any minority of node failures with automatic leader election and no data loss.
-
-**Why P2P replication instead of metadata-driven?** If metadata drove every replication step, it would become a bottleneck at high upload throughput. By having the primary storage node own the fan-out, metadata stays lightweight regardless of data volume — it only records the outcome, never participates in byte transfer.
-
-**Why fixed-size chunking?** Simplicity and predictability. Content-defined chunking enables deduplication but adds significant complexity. For a write-once system without dedup requirements, fixed-size is the right tradeoff.
-
-**Why atomic rename for chunk writes?** Rename is atomic on Linux. Writing to a `.tmp` file first and then renaming means a crash at any point during a write never leaves a corrupt visible chunk. Either the full chunk exists or nothing does.
-
-**Why piggyback repair jobs on heartbeat responses?** Avoids metadata having to maintain outbound connections to storage nodes. Storage nodes already call metadata every 3 seconds — using that channel for repair delivery simplifies the connection topology significantly.
+- **Raft for metadata** — avoids single point of failure; automatic leader election ensures availability through minority node failures.
+- **P2P replication** — the primary storage node owns fan-out, keeping metadata lightweight regardless of data volume. Metadata only records outcomes, never transfers bytes.
+- **Fixed-size chunking** — predictable and simple. Content-defined chunking adds complexity without benefit for a write-once system without deduplication.
+- **Atomic rename for chunk writes** — writing to `.tmp` then renaming guarantees a crash never leaves a corrupt visible chunk.
+- **Piggyback repair on heartbeats** — storage nodes already call metadata every 3s; using that channel for repair delivery avoids metadata maintaining outbound connections.
 
 ---
 
 ## Limitations
 
-This is an academic implementation. Known simplifications compared to production systems:
+This is an academic implementation. Known simplifications:
 
 - Write-once model — no file updates or appends
 - No rack-awareness in placement strategy
 - No TLS — all gRPC connections are insecure
 - No authentication or access control
 - Single metadata cluster — no cross-datacenter replication
-- No quota management per user or directory
+- No quota management
 
 ---
 
@@ -331,5 +244,5 @@ This is an academic implementation. Known simplifications compared to production
 
 - [The Google File System (Ghemawat et al., 2003)](https://research.google/pubs/pub51/)
 - [HDFS Architecture Guide](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html)
-- [In Search of an Understandable Consensus Algorithm — Raft paper (Ongaro & Ousterhout, 2014)](https://raft.github.io/raft.pdf)
+- [In Search of an Understandable Consensus Algorithm — Raft (Ongaro & Ousterhout, 2014)](https://raft.github.io/raft.pdf)
 - [hashicorp/raft](https://github.com/hashicorp/raft)

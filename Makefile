@@ -16,14 +16,17 @@ build-dfs-cli:    # build client binary
 build-all: 	build-storage build-client build-metadata      # all three
 test-storage:    # run storage package tests
 
-test-all:        # all tests
-	go test -count=1 ./...
+test-all:        # all tests (unit + component, excludes integration)
+	go test -count=1 -short ./...
 
 integration-test: # run integration tests (metadata + storage cluster)
 	go test -tags integration -count=1 -timeout 120s -v ./integration/...
-run-cluster:     # start 1 metadata + 4 storage nodes locally
-demo:            # run demo script
-	./scripts/test_upload_download.sh
+run-cluster:     # start cluster via docker compose
+	./scripts/run-cluster.sh -m 1 -s 3 up -d --build
+demo:            # build + run cluster + show logs
+	./scripts/run-cluster.sh -m 1 -s 3 up -d --build && \
+		sleep 5 && \
+		docker compose -f scripts/docker-compose.yml logs -f
 
 # func to check for a specific tool
 define check_tool
