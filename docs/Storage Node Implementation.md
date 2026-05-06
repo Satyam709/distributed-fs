@@ -71,12 +71,12 @@ CLIENT                        METADATA                   STORAGE NODES
   │                               │                            │
   │  (upload chunks in parallel)  │                            │
   │                               │                            │
-  ├──PutChunk(chunk_0)───────────────────────────────────────►NodeA
-  ├──PutChunk(chunk_1)───────────────────────────────────────►NodeB
-  ├──PutChunk(chunk_2)───────────────────────────────────────►NodeA
+  ├──PutChunk(chunk_0)──────────────────────────────────►NodeA │
+  ├──PutChunk(chunk_1)──────────────────────────────────►NodeB │
+  ├──PutChunk(chunk_2)──────────────────────────────────►NodeA │
   │                               │                            │
-  │                               │         NodeA fans out P2P replication
-  │                               │         NodeA──►NodeB, NodeA──►NodeC
+  │                               │ NodeA fans out replication │
+  │                               │ NodeA→NodeB, NodeA→NodeC   │
   │                               │                            │
   │◄──success per chunk───────────────────────────────────────-│
   │                               │                            │
@@ -108,9 +108,9 @@ CLIENT                        METADATA                   STORAGE NODES
   │                               │                            │
   │  (download all chunks in parallel)                         │
   │                               │                            │
-  ├──GetChunk(chunk_0)───────────────────────────────────────►NodeA
-  ├──GetChunk(chunk_1)───────────────────────────────────────►NodeC
-  ├──GetChunk(chunk_2)───────────────────────────────────────►NodeB
+  ├──GetChunk(chunk_0)──────────────────────────────────►NodeA │
+  ├──GetChunk(chunk_1)──────────────────────────────────►NodeC │
+  ├──GetChunk(chunk_2)──────────────────────────────────►NodeB │
   │                               │                            │
   │◄──chunk bytes (streamed)──────────────────────────────────-│
   │                               │                            │

@@ -59,23 +59,23 @@ The Storage Node is the data plane component of the distributed file system. It 
 ┌──────────────────────────────────────────────────────────────┐
 │                      Storage Node                            │
 │                                                              │
-│  ┌─────────────┐  ┌──────────────────┐  ┌────────────────┐  │
-│  │ gRPC Server │  │ HeartbeatSender  │  │ ReplicationMgr │  │
-│  │  (server/)  │  │  (service/)      │  │ (replication/) │  │
-│  └──────┬──────┘  └────────┬─────────┘  └───────┬────────┘  │
-│         │                  │                    │             │
-│         │     ┌────────────┴──────────┐         │             │
-│         │     │    MetaClient          │         │             │
-│         │     │   (metaclient/)        │         │             │
-│         │     └────────────┬──────────┘         │             │
-│         │                  │                    │             │
-│  ┌──────┴──────────────────┴────────────────────┴──────┐      │
-│  │                 ChunkStore (store/)                  │      │
-│  │  DiskChunkStore + BoltDB ChecksumIndex              │      │
-│  └─────────────────────────────────────────────────────┘      │
+│  ┌─────────────┐  ┌──────────────────┐  ┌────────────────┐   │
+│  │ gRPC Server │  │ HeartbeatSender  │  │ ReplicationMgr │   │
+│  │  (server/)  │  │  (service/)      │  │ (replication/) │   │
+│  └──────┬──────┘  └────────┬─────────┘  └───────┬────────┘   │
+│         │                  │                    │            │
+│         │     ┌────────────┴──────────┐         │            │
+│         │     │    MetaClient          │         │           │
+│         │     │   (metaclient/)        │         │           │
+│         │     └────────────┬──────────┘         │            │
+│         │                  │                    │            │
+│  ┌──────┴──────────────────┴────────────────────┴──────┐     │
+│  │                 ChunkStore (store/)                  │    │
+│  │  DiskChunkStore + BoltDB ChecksumIndex              │     │
+│  └─────────────────────────────────────────────────────┘     │
 │                                                              │
 │  Disk Layout:                                                │
-│  <DataDir>/node_id            (persisted UUID)                │
+│  <DataDir>/node_id            (persisted UUID)               │
 │  <DataDir>/xx/yy/chunk_id     (two-level sharded chunks)     │
 │  <DataDir>/tmp/               (in-flight writes)             │
 │  <DataDir>/checksums.bolt     (BoltDB checksum index)        │

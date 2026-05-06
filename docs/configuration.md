@@ -15,17 +15,17 @@
                           register  │      │      │  heartbeat
                           heartbeats│      │      │  commit_chunk
                                     │      │      │
-               ┌────────────────────┼──────┼──────┼──────────────┐
-               │                    ▼      ▼      ▼              │
-               │           ┌────────────────────────┐             │
+               ┌────────────────────┼──────┼──────┼────────────────┐
+               │                    ▼      ▼      ▼                │
+               │           ┌─────────────────────────┐             │
                │           │    Storage Nodes        │             │
                │           │                         │             │
-         ┌─────┴──────┐    │  storage-1 :4000        │ ── P2P ──  │
-         │   Client   │    │  storage-2 :4000        │ Replicate  │
-         │             │    │  storage-3 :4000        │   Chunk    │
-         │  dfs-cli    │───►│                         │             │
-         │             │    └────────────────────────┘             │
-         └────────────┘                                           │
+         ┌─────┴──────┐    │  storage-1 :4000        │ ── P2P ──   │
+         │   Client    │   │  storage-2 :4000        │ Replicate   │
+         │             │   │  storage-3 :4000        │   Chunk     │
+         │  dfs-cli    │──►│                         │             │
+         │             │   └─────────────────────────┘             │
+         └────────────┘                                            │
 ```
 
 The system uses three components connected via gRPC:

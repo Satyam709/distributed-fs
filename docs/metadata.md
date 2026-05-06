@@ -82,7 +82,7 @@ Only the Raft leader handles write operations. Followers redirect clients to the
 │  │(raft.go) │◄──│ (fsm/fsm.go) │   │ (watcher/)        │  │
 │  │          │   │              │   │ leader-only sweep │  │
 │  │hashicorp │   │ FileIndex    │   └────────┬──────────┘  │
-│  │ /raft    │   │ ChunkRegistry│            │              │
+│  │ /raft    │   │ ChunkRegistry│            │             │
 │  └────┬─────┘   │ NodeRegistry │   ┌────────▼──────────┐  │
 │       │         │ RepairJobs   │   │ RepairScheduler   │  │
 │       │         └──────┬───────┘   │ (scheduler/)      │  │
@@ -91,7 +91,7 @@ Only the Raft leader handles write operations. Followers redirect clients to the
 │  │ BoltStore│   │ Placement    │   │ jobs for under-   │  │
 │  │(store/)  │   │ Strategy     │   │ replicated chunks │  │
 │  │BoltDB    │   │(placement/)  │   └────────┬──────────┘  │
-│  │log+stable│   │ SelectNodes  │            │              │
+│  │log+stable│   │ SelectNodes  │            │             │
 │  └──────────┘   └──────────────┘   ┌────────▼──────────┐  │
 │                                    │ Reconciler        │  │
 │  ┌──────────────────────────────┐  │ (reconciler/)     │  │
