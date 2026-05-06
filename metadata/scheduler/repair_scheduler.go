@@ -177,7 +177,6 @@ func (rs *RepairScheduler) scheduleRepairJobs(chunkID string, liveReplicas []fsm
 			rs.logger.Error("scheduling failed", err, "chunkID", chunkID)
 			return
 		}
-		rs.logger.Info(fmt.Sprintf("placements %v", newNodes))
 
 		// Delegate source selection to the source strategy
 		source := rs.sourceStrategy.SelectPrimary(liveReplicas)
