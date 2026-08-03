@@ -1,0 +1,8 @@
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces High-level system architecture: control plane (Raft metadata cluster) is strictly separated from the data plane (storage nodes), which replicate chunks directly among themselves.}}{12}{figure.caption.7}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Node liveness state machine driving failure detection and repair triggering.}}{15}{figure.caption.9}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }

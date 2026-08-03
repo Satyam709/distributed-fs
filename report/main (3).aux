@@ -1,0 +1,70 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {chapter}{Certificate}{1}{chapter*.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{Declaration}{2}{chapter*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{Abstract}{3}{chapter*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {1}Introduction}{8}{chapter.1}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {chapter}{\numberline {2}Motivation}{9}{chapter.2}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {chapter}{\numberline {3}Related and Background Work}{10}{chapter.3}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {3.1}Google File System (GFS)}{10}{section.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.2}Hadoop Distributed File System (HDFS)}{10}{section.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.3}Raft Consensus Algorithm}{10}{section.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.4}gRPC and Protocol Buffers}{11}{section.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.5}BitTorrent-style Peer-to-Peer Replication}{11}{section.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {4}Proposed Work and System Design}{12}{chapter.4}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {4.1}System Architecture}{12}{section.4.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.1}{\ignorespaces High-level system architecture: control plane (Raft metadata cluster) is strictly separated from the data plane (storage nodes), which replicate chunks directly among themselves.}}{12}{figure.caption.7}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:architecture}{{4.1}{12}{High-level system architecture: control plane (Raft metadata cluster) is strictly separated from the data plane (storage nodes), which replicate chunks directly among themselves}{figure.caption.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.1}Control Plane (Metadata Cluster)}{12}{subsection.4.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1.2}Data Plane (Storage Nodes)}{12}{subsection.4.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.2}gRPC Service Design}{13}{section.4.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4.1}{\ignorespaces Summary of the system's three gRPC service boundaries.}}{13}{table.caption.8}\protected@file@percent }
+\newlabel{tab:grpc}{{4.1}{13}{Summary of the system's three gRPC service boundaries}{table.caption.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.3}Chunking Strategy}{13}{section.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.4}File Upload Algorithm}{14}{section.4.4}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces File Upload}}{14}{algorithm.1}\protected@file@percent }
+\newlabel{alg:upload}{{1}{14}{File Upload}{algorithm.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.5}File Download Algorithm}{14}{section.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.6}Raft-based Metadata Consensus}{14}{section.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.7}Failure Detection and Self-Healing}{15}{section.4.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4.2}{\ignorespaces Node liveness state machine driving failure detection and repair triggering.}}{15}{figure.caption.9}\protected@file@percent }
+\newlabel{fig:failstates}{{4.2}{15}{Node liveness state machine driving failure detection and repair triggering}{figure.caption.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.8}Placement Strategy}{15}{section.4.8}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces Failure Detection and Repair (Metadata Cluster)}}{16}{algorithm.2}\protected@file@percent }
+\newlabel{alg:repair}{{2}{16}{Failure Detection and Repair (Metadata Cluster)}{algorithm.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4.9}Consistency Model}{16}{section.4.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {5}Experimental Details}{17}{chapter.5}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {5.1}Testing Methodology}{17}{section.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.2}Test Scenarios Implemented}{17}{section.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.3}Representative Scenario: Node-Failure Repair}{17}{section.5.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5.1}{\ignorespaces Integration test suites and the failure/behavior classes they cover (65 test cases total across the \texttt  {integration/} package).}}{18}{table.caption.10}\protected@file@percent }
+\newlabel{tab:tests}{{5.1}{18}{Integration test suites and the failure/behavior classes they cover (65 test cases total across the \texttt {integration/} package)}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5.4}Running the Test Suite}{18}{section.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {6}Conclusion and Future Work}{20}{chapter.6}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {6.1}Conclusion}{20}{section.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.2}Limitations}{20}{section.6.2}\protected@file@percent }
+\newlabel{sec:limitations}{{6.2}{20}{Limitations}{section.6.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6.3}Future Work}{21}{section.6.3}\protected@file@percent }
+\bibcite{raft}{1}
+\bibcite{gfs}{2}
+\bibcite{hdfs}{3}
+\bibcite{hashicorpraft}{4}
+\bibcite{grpc}{5}
+\bibcite{bbolt}{6}
+\bibcite{bittorrent}{7}
+\gdef \@abspage@last{23}
